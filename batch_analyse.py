@@ -18,7 +18,7 @@ parser.add_argument('-t', help='number of threads to use',default=1,
 
 parser.add_argument('-o',default='output.txt',dest='of',help='output file')
 
-parser.add_argument('-q', help='Keep only points with SAP_QUALITY=1',action='store_true')
+parser.add_argument('-q', help='Keep only points with SAP_QUALITY=0',action='store_true')
 
 # Get directories from command line arguments.
 args = parser.parse_args()
