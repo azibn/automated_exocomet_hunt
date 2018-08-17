@@ -317,7 +317,8 @@ def classify(m,n,real,asym):
         return "maybeTransit"
 
 
-def calc_shape(m,n,time,flux,cutout_half_width=5):
+def calc_shape(m,n,time,flux,cutout_half_width=5,
+               n_m_bg_start=3, n_m_bg_end=1):
     """Fit both symmetric and comet-like transit profiles and compare fit.
     Returns:
     (1) Asymmetry: ratio of (errors squared)
@@ -333,10 +334,10 @@ def calc_shape(m,n,time,flux,cutout_half_width=5):
         t = time[n-w*m:n+w*m]
         x = flux[n-w*m:n+w*m]
         # background_level = (sum(x[:m]) + sum(x[(2*w-1)*m:]))/(2*m)
-        bg_l1 = np.mean(x[:m])
-        bg_t1 = np.mean(t[:m])
-        bg_l2 = np.mean(x[(2*w-1)*m:])
-        bg_t2 = np.mean(t[(2*w-1)*m:])
+        bg_l1 = np.mean(x[:n_m_bg_start*m])
+        bg_t1 = np.mean(t[:n_m_bg_start*m])
+        bg_l2 = np.mean(x[(2*w-n_m_bg_end)*m:])
+        bg_t2 = np.mean(t[(2*w-n_m_bg_end)*m:])
         grad = (bg_l2-bg_l1)/(bg_t2-bg_t1)
         background_level = bg_l1 + grad * (t - bg_t1)
         x -= background_level
