@@ -8,8 +8,13 @@ import math
 import sys,os
 
 
-def import_lightcurve(file_path, drop_bad_points=False):
-    """Returns (N by 2) table, columns are (time, flux)."""
+def import_lightcurve(file_path, drop_bad_points=False,
+                      ok_flags=[5]):
+    """Returns (N by 2) table, columns are (time, flux).
+
+    Flags deemed to be OK are:
+    5 - reaction wheel zero crossing, matters for short cadence
+    """
 
     try:
         hdulist = fits.open(file_path)
@@ -21,7 +26,13 @@ def import_lightcurve(file_path, drop_bad_points=False):
     table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
 
     if drop_bad_points:
-        bad_points = [i for i in range(len(table)) if table[i][2]>0]
+        bad_points = []
+        q_ind = get_quality_indices(table['SAP_QUALITY'])
+        for j,q in enumerate(q_ind):
+            if j+1 not in [5]:
+                bad_points += q.tolist()
+
+        # bad_points = [i for i in range(len(table)) if table[i][2]>0]
         table.remove_rows(bad_points)
 
     # Delete rows containing NaN values.
@@ -306,7 +317,7 @@ def classify(m,n,real,asym):
         return "maybeTransit"
 
 
-def calc_shape(m,n,time,flux):
+def calc_shape(m,n,time,flux,cutout_half_width=5):
     """Fit both symmetric and comet-like transit profiles and compare fit.
     Returns:
     (1) Asymmetry: ratio of (errors squared)
@@ -317,10 +328,17 @@ def calc_shape(m,n,time,flux):
 
     (2,3) Widths of comet curve fit segments.
     """
-    if n-3*m >= 0 and n+3*m < len(time):
-        t = time[n-3*m:n+3*m]
-        x = flux[n-3*m:n+3*m]
-        background_level = (sum(x[:m]) + sum(x[5*m:]))/(2*m)
+    w = cutout_half_width
+    if n-w*m >= 0 and n+w*m < len(time):
+        t = time[n-w*m:n+w*m]
+        x = flux[n-w*m:n+w*m]
+        # background_level = (sum(x[:m]) + sum(x[(2*w-1)*m:]))/(2*m)
+        bg_l1 = np.mean(x[:m])
+        bg_t1 = np.mean(t[:m])
+        bg_l2 = np.mean(x[(2*w-1)*m:])
+        bg_t2 = np.mean(t[(2*w-1)*m:])
+        grad = (bg_l2-bg_l1)/(bg_t2-bg_t1)
+        background_level = bg_l1 + grad * (t - bg_t1)
         x -= background_level
 
         try:
@@ -340,3 +358,20 @@ def calc_shape(m,n,time,flux):
     else:
         return -2,-2,-2
 
+
+def d2q(d):
+    '''Convert Kepler day to quarter'''
+    qs = [130.30,165.03,258.52,349.55,442.25,538.21,629.35,719.60,802.39,
+          905.98,1000.32,1098.38,1182.07,1273.11,1371.37,1471.19,1558.01,1591.05]
+    for qn, q in enumerate(qs):
+        if d < q:
+            return qn
+
+
+def get_quality_indices(sap_quality):
+    '''Return list of indices where each quality bit is set'''
+    q_indices = []
+    for bit in np.arange(21)+1:
+        q_indices.append(np.where(sap_quality >> (bit-1) & 1 == 1)[0])
+
+    return q_indices
