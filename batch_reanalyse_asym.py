@@ -44,6 +44,14 @@ def process_file(f_path):
 
         if len(table) > 120:
             t,flux,quality,real = clean_data(table)
+
+            # now throw away interpolated points (we're reprocessing
+            # and trying to get the shape parameters right)
+            t = t[np.array(real,dtype=bool)]
+            flux = flux[np.array(real,dtype=bool)]
+            quality = quality[np.array(real,dtype=bool)]
+            real = real[np.array(real,dtype=bool)]
+
             flux = normalise_flux(flux)
             lombscargle_filter(t,flux,real,0.05)
             flux = flux*real
