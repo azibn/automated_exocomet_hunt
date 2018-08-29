@@ -50,7 +50,7 @@ def import_lightcurve(file_path, drop_bad_points=False,
         bad_points = []
         q_ind = get_quality_indices(table['SAP_QUALITY'])
         for j,q in enumerate(q_ind):
-            if j+1 not in [5]:
+            if j+1 not in ok_flags:
                 bad_points += q.tolist()
 
         # bad_points = [i for i in range(len(table)) if table[i][2]>0]

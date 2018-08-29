@@ -29,8 +29,8 @@ args = parser.parse_args()
 # get list of light curve files from file
 files = []
 for f in args.files:
-    tmp = Table.read(f, format='ascii')
-    files.append(list(data['col1']))
+    data = Table.read(f, format='ascii')
+    files += list(data['col1'])
 
 ## Prepare multithreading.
 m = multiprocessing.Manager()
