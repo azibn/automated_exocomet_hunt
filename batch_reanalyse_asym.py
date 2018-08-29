@@ -88,15 +88,11 @@ pool = multiprocessing.Pool(processes=args.threads)
 
 paths = []
 for f in files:
-    p = glob.glob(args.dataroot+'/**/'+f, recursive=True)
-    if len(p) > 1:
-        print('more than one file matches: {}'.format(f))
-    elif p == 0:
-        print('cannot find file: {}'.format(f))
-    elif not p.endswith('.fits'):
-        print('file found not a FITS: {}'.format(p))
-    else:
+    try:
+        p = download_lightcurve(f)
         paths.append(p)
+    except:
+        raise FileNotFoundError('{} undownloadable'.format(f))
 
-pool.map(process_file,file_paths)
+pool.map(process_file, paths)
 

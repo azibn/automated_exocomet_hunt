@@ -6,6 +6,27 @@ import numpy as np
 cimport numpy as np
 import math
 import sys,os
+import kplr
+
+
+def download_lightcurve(file, path='.'):
+    """Get a light curve path, downloading if necessary."""
+
+    kic_no = int(file.split('-')[0].split('kplr')[1])
+
+    kic = kplr.API()
+    kic.data_root = path
+
+    star = kic.star(kic_no)
+    lcs = star.get_light_curves()
+
+    for i,l in enumerate(lcs):
+        if file in l.filename:
+            f_i = i
+            break
+
+    _ = lcs[i].open() # force download
+    return lcs[i].filename
 
 
 def import_lightcurve(file_path, drop_bad_points=False,
