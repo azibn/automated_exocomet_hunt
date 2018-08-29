@@ -94,6 +94,7 @@ def process_file(f_path):
 
 pool = multiprocessing.Pool(processes=args.threads)
 
+# grab all the files first (download in pool failed)
 paths = []
 for f in files:
     try:
