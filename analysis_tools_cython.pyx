@@ -14,11 +14,15 @@ def download_lightcurve(file, path='.'):
 
     kic_no = int(file.split('-')[0].split('kplr')[1])
 
+    file_path = path+'/data/lightcurves/{:09}/'.format(kic_no)+file
+    if os.path.exists(file_path):
+        return file_path
+
     kic = kplr.API()
     kic.data_root = path
 
     star = kic.star(kic_no)
-    lcs = star.get_light_curves()
+    lcs = star.get_light_curves(short_cadence=False)
 
     for i,l in enumerate(lcs):
         if file in l.filename:
