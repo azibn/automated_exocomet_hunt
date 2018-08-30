@@ -91,17 +91,36 @@ def process_file(f_path):
         traceback.print_exc()
 
 
+def get_one(file, path='.'):
+    """Get one file."""
+    kic_no = file.split('-')[0].split('kplr')[1]
+    kic_part = kic_no[:4]
+    file_path = path+'/data/lightcurves/{}/'.format(kic_no)
+    if not os.path.exists(file_path+file):
+        os.mkdir(file_path)
+        subprocess.run(['wget',
+                        'https://archive.stsci.edu/missions/kepler/lightcurves/{}/{}/{}'.format(kic_part,kic_no,file),
+                        '-O',path+'/data/lightcurves/{}/{}'.format(kic_no,file),
+                        '-nc'], check=True)
 
+    return file_path+file
+
+
+# get all files
 pool = multiprocessing.Pool(processes=args.threads)
+paths = pool.map(get_one,files)
+pool.close()
 
 # grab all the files first (download in pool failed)
-paths = []
-for f in files:
-    try:
-        p = download_lightcurve(f)
-        paths.append(p)
-    except:
-        raise FileNotFoundError('{} undownloadable'.format(f))
+#paths = []
+#for f in files:
+#    try:
+#        p = download_lightcurve(f)
+#        paths.append(p)
+#    except:
+#        raise FileNotFoundError('{} undownloadable'.format(f))
 
+# process them
+pool = multiprocessing.Pool(processes=args.threads)
 pool.map(process_file, paths)
-
+pool.close()
