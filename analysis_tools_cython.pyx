@@ -334,7 +334,7 @@ def classify(m,n,real,asym):
     N = len(real)
     if asym == -2:
         return "end"
-    elif m == -4:
+    elif asym == -4:
         return "gap"
     elif m < 3:
         return "point"
