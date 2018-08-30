@@ -113,7 +113,7 @@ def get_one(file, path='.'):
 
 # get all files
 pool = multiprocessing.Pool(processes=args.threads)
-paths = pool.map(get_one,files[:10])
+paths = pool.map(get_one,files)
 pool.close()
 
 # process them
