@@ -6,6 +6,7 @@ from analysis_tools_cython import *
 from astropy.table import Table
 import glob
 import multiprocessing
+import subprocess
 import sys
 import traceback
 import argparse
@@ -96,29 +97,23 @@ def get_one(file, path='.'):
     kic_no = file.split('-')[0].split('kplr')[1]
     kic_part = kic_no[:4]
     file_path = path+'/data/lightcurves/{}/'.format(kic_no)
-    if not os.path.exists(file_path+file):
+
+    if not os.path.exists(file_path):
         os.mkdir(file_path)
+
+    if not os.path.exists(file_path+file):
         subprocess.run(['wget',
                         'https://archive.stsci.edu/missions/kepler/lightcurves/{}/{}/{}'.format(kic_part,kic_no,file),
                         '-O',path+'/data/lightcurves/{}/{}'.format(kic_no,file),
-                        '-nc'], check=True)
+                        '-nc'], check=True, stderr=subprocess.PIPE)
 
     return file_path+file
 
 
 # get all files
 pool = multiprocessing.Pool(processes=args.threads)
-paths = pool.map(get_one,files)
+paths = pool.map(get_one,files[:10])
 pool.close()
-
-# grab all the files first (download in pool failed)
-#paths = []
-#for f in files:
-#    try:
-#        p = download_lightcurve(f)
-#        paths.append(p)
-#    except:
-#        raise FileNotFoundError('{} undownloadable'.format(f))
 
 # process them
 pool = multiprocessing.Pool(processes=args.threads)
