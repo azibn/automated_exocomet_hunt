@@ -43,7 +43,8 @@ def process_file(f_path):
         f = os.path.basename(f_path)
         table = import_lightcurve(f_path, args.q)
 
-        if len(table) > 120:
+        # ensure lightcurve long enough and not a background pixel
+        if len(table) > 120 and 'kplr1' not in f:
             t,flux,quality,real = clean_data(table)
 
             # now throw away interpolated points (we're reprocessing
@@ -112,7 +113,7 @@ def get_one(file, path='.'):
 
 # get all files
 pool = multiprocessing.Pool(processes=args.threads)
-paths = pool.map(get_one,files)
+paths = pool.map(get_one,files[:10])
 pool.close()
 
 # process them
