@@ -334,6 +334,8 @@ def classify(m,n,real,asym):
     N = len(real)
     if asym == -2:
         return "end"
+    elif m == -4:
+        return "gap"
     elif m < 3:
         return "point"
     elif real[(n-2*m):(n-m)].sum() < 0.5*m:
@@ -351,12 +353,15 @@ def calc_shape(m,n,time,flux,cutout_half_width=5,
     -1 : Divide by zero as comet profile is exact fit
     -2 : Too close to end of light curve to fit profile
     -3 : Unable to fit model (e.g. timeout)
+    -4 : Too much empty space in light curve
 
     (2,3) Widths of comet curve fit segments.
     """
     w = cutout_half_width
     if n-w*m >= 0 and n+w*m < len(time):
         t = time[n-w*m:n+w*m]
+        if (t[-1]-t[0]) / np.median(np.diff(t)) / len(t) > 1.5:
+            return -4,-4,-4
         x = flux[n-w*m:n+w*m]
         # background_level = (sum(x[:m]) + sum(x[(2*w-1)*m:]))/(2*m)
         bg_l1 = np.mean(x[:n_m_bg_start*m])
