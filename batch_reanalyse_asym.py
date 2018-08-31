@@ -93,7 +93,7 @@ def process_file(f_path):
         traceback.print_exc()
 
 
-def get_one(file, path='.'):
+def get_one(file, path=args.d):
     """Get one file."""
     kic_no = file.split('-')[0].split('kplr')[1]
     kic_part = kic_no[:4]
