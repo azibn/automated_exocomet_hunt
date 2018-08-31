@@ -353,7 +353,7 @@ def calc_shape(m,n,time,flux,cutout_half_width=5,
     -1 : Divide by zero as comet profile is exact fit
     -2 : Too close to end of light curve to fit profile
     -3 : Unable to fit model (e.g. timeout)
-    -4 : Too much empty space in light curve
+    -4 : Too much empty space in overall light curve or near dip
 
     (2,3) Widths of comet curve fit segments.
     """
@@ -361,6 +361,9 @@ def calc_shape(m,n,time,flux,cutout_half_width=5,
     if n-w*m >= 0 and n+w*m < len(time):
         t = time[n-w*m:n+w*m]
         if (t[-1]-t[0]) / np.median(np.diff(t)) / len(t) > 1.5:
+            return -4,-4,-4
+        t2 = time[int(n-m/2.):int(n+m/2.)]
+        if (t2[-1]-t2[0]) / np.median(np.diff(t2)) / m > 1.5:
             return -4,-4,-4
         x = flux[n-w*m:n+w*m]
         # background_level = (sum(x[:m]) + sum(x[(2*w-1)*m:]))/(2*m)
