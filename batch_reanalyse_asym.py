@@ -18,7 +18,7 @@ parser.add_argument(help='Output file(s)',nargs='+',dest='files')
 parser.add_argument('-t', help='number of threads to use',default=1,
                         dest='threads',type=int)
 
-parser.add_argument('-d',default='.',dest='dataroot',help='Base path to light curves')
+parser.add_argument('-d',default='.',help='Base path to light curves')
 
 parser.add_argument('-o',default='output.txt',dest='of',help='output file')
 
