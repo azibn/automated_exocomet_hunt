@@ -23,4 +23,14 @@ These scripts runs on light curve files, which can be obtained from [MAST](https
 
 ### Output
 
-https://github.com/greghope667/comet_project_results contains a description of the output table format produced by this code, as well as the output when run on the entire Kepler dataset.
+https://github.com/greghope667/comet_project_results contains a description of the output table format produced by this code, as well as the output when run on the entire Kepler dataset. See there also for description of the format of the txt files with dips, and how to filter then with the awk scripts.
+
+* all_snr_gt_5.txt is the full list of 67,532 potential transits
+* all_snr_gt_5_ok.txt is the final list of 7,217 transits
+
+
+### Other files
+
+* The jupyer notebook figs.ipynb contains code to explore individual light curves, and makes most of the plots in the paper.
+* The text file artefact_list.txt contains a list of artefacts found among candidates.
+* dr2.xml and young-cl.xml contain votables of stars from Gaia used in the HR diagrams.
