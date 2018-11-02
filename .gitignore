@@ -9,3 +9,6 @@ results
 # Temp vim files
 *.swp
 
+# other
+.DS_Store
+.ipynb_checkpoints/
