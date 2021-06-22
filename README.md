@@ -2,7 +2,7 @@ Code for automated detection of comets in light curve files.
 
 ### Installation (Edited)
 
-Using a Conda environment (latest tested in Python 3.81). Install by running in the terminal:
+This project was developed with a Conda environment (latest tested in Python 3.8.1). Install by running in the terminal:
 	
 	git clone https://github.com/azibn/automated_exocomet_hunt
 	conda create -n <Environment Name> --file requirements.txt
@@ -10,11 +10,15 @@ Using a Conda environment (latest tested in Python 3.81). Install by running in 
 	./make
 
 
-Cython may show some deprecated warnings upon install. Updates to these soon.
+Cython may show some deprecated warnings upon install. Fixes to these coming soon.
+
+**Note**: M1 Mac machines may face issues with Scipy install when using pip. Recommended to use a Conda enviornment and install Scipy with `conda install scipy`. 
+
+The original installation method is below, if the above does not work.
 
 ----
 
-Requires Python 3 (tested in 3.5). Uses Numpy, Scipy, Astropy and Matplotlib libraries, and a working Cython install. 
+Requires Python 3 (tested in 3.5). Needs Numpy, Scipy, Astropy and Matplotlib libraries, and a working Cython install. 
 
 Install by running:
 
