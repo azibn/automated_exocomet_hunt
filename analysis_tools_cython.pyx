@@ -1,9 +1,10 @@
+import pandas as pd
 from astropy.io import fits
 from astropy.table import Table
 from scipy.optimize import curve_fit
-from astropy.stats import LombScargle
+from astropy.timeseries import LombScargle
 import numpy as np
-cimport numpy as np
+import numpy as np
 import math
 import sys,os
 import kplr
@@ -32,6 +33,27 @@ def download_lightcurve(file, path='.'):
     _ = lcs[i].open() # force download
     return lcs[i].filename
 
+def import_XRPlightcurve(file_path):
+    """
+    Importing the compressed TESS lightcurves from the XRP group.
+    file_path: path to file
+    :type file_path: pkl
+    :returns: 
+        - lc - lightcurve data as a DataFrame. 
+        - store - Storage of other information (TIC, RA, Dec, TESS magnitude, Camera, Chip)
+    """
+    data = pd.read_pickle(file_path)
+
+    ## extracting the lightcurve data and converting to Series from lists
+    for i in range(len(data)):
+        if isinstance(data[i],np.ndarray):
+            data[i] = pd.Series(data[i])
+    for_df = data[6:] # data[0:6] is not relevant in this case.
+    columns = ['time','raw flux','corrected flux','PCA flux','flux error','quality']
+    df = pd.DataFrame(data=for_df).T
+    df.columns = columns
+
+    return data, data[0:6]
 
 def import_lightcurve(file_path, drop_bad_points=False,
                       ok_flags=[5]):
@@ -48,11 +70,11 @@ def import_lightcurve(file_path, drop_bad_points=False,
         return
 
     scidata = hdulist[1].data
-    table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+    table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
 
     if drop_bad_points:
         bad_points = []
-        q_ind = get_quality_indices(table['SAP_QUALITY'])
+        q_ind = get_quality_indices(table['QUALITY'])
         for j,q in enumerate(q_ind):
             if j+1 not in ok_flags:
                 bad_points += q.tolist()
@@ -76,7 +98,6 @@ def import_lightcurve(file_path, drop_bad_points=False,
 
     return table
 
-
 def calculate_timestep(table):
     """Returns median value of time differences between data points,
     estimate of time delta data points."""
@@ -84,7 +105,6 @@ def calculate_timestep(table):
     dt = [ table[i+1][0] - table[i][0] for i in range(len(table)-1) ]
     dt.sort()
     return dt[int(len(dt)/2)]
-
 
 def clean_data(table):
     """Interpolates missing data points, so we have equal time gaps
@@ -414,3 +434,36 @@ def get_quality_indices(sap_quality):
         q_indices.append(np.where(sap_quality >> (bit-1) & 1 == 1)[0])
 
     return q_indices
+
+#
+#
+# def import_XRPlightcurve(file_path):
+#     """
+#     Importing the compressed TESS lightcurves from the XRP group.
+#
+#     file_path: path to file
+#     quality: specifies which
+#
+#     returns
+#         - table: Astropy table format of lightcurve
+#         - store: additional information about the lightcurve (TIC ID, camera, etc)
+#     """
+#     data = pd.read_pickle(file_path)
+#
+#     ## extracting the lightcurve data and converting to Series from lists
+#     for i in range(len(data)):
+#         if isinstance(data[i], np.ndarray):
+#             data[i] = pd.Series(data[i])
+#     for_df = data[6:]  # data[0:6] is not relevant in this case.
+#     columns = ['time', 'raw flux', 'corrected flux', 'PCA flux', 'flux error', 'quality']
+#     df = pd.DataFrame(data=for_df).T
+#     df.columns = columns
+#     table = Table.from_pandas(df)
+#
+#     return table, data[0:6]
+#
+# def normalise_lc(flux):
+#     return flux/flux.mean()
+#
+# def remove_zeros(data):
+#     return data[data['PCA flux'] != 0]
