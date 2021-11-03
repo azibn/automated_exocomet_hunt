@@ -21,18 +21,28 @@ def import_XRPlightcurve(file_path):
         if isinstance(data[i], np.ndarray):
             data[i] = pd.Series(data[i])
     for_df = data[6:]  # data[0:6] is not relevant in this case.
-    columns = ['time', 'raw flux', 'corrected flux', 'PCA flux', 'flux error', 'quality']
+    columns = [
+        "time",
+        "raw flux",
+        "corrected flux",
+        "PCA flux",
+        "flux error",
+        "quality",
+    ]
     df = pd.DataFrame(data=for_df).T
     df.columns = columns
+    df = df.loc[df["quality"] == 0]
     table = Table.from_pandas(df)
 
     return table, data[0:6]
 
+
 def normalise_lc(flux):
-    return flux/flux.mean()
+    return flux / flux.mean()
+
 
 def remove_zeros(data):
-    return data[data['PCA flux'] != 0]
+    return data[data["PCA flux"] != 0]
 
 
 # def remove_zeros(data):

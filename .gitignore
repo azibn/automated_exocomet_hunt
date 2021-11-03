@@ -12,3 +12,13 @@ results
 # other
 .DS_Store
 .ipynb_checkpoints/
+
+.idea/
+Kepler/
+__pycache__/
+figs/lightcurve.ipynb
+lightcurve.ipynb
+mastDownload/
+maxsector.py
+tess/
+
