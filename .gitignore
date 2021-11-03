@@ -20,5 +20,4 @@ figs/lightcurve.ipynb
 lightcurve.ipynb
 mastDownload/
 maxsector.py
-tess/
-
+tess/2_min_cadence_targets
