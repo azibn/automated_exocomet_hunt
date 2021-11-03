@@ -11,7 +11,8 @@ import argparse
 import tqdm
 import data
 import loaders
-
+import warnings
+warnings.filterwarnings("ignore")
 
 
 parser = argparse.ArgumentParser(description='Analyse lightcurves in target directory.')
@@ -88,7 +89,6 @@ def process_tess_file(f_path):
     try:
         f = os.path.basename(f_path)
         table,lc_info = import_XRPlightcurve(f_path)[0],import_XRPlightcurve(f_path)[1]
-        print(len(table))
         if len(table) > 120:
 
             table['normalised PCA'] = normalise_lc(table['PCA flux'])
@@ -96,7 +96,7 @@ def process_tess_file(f_path):
             bad_times = bad_times - 2457000
             mad_df = data.load_mad()
 
-            sec = 6 # int(os.path.basename(args.path[0]).split('_')[2])  # eleanor lightcurve gives sector number in filename
+            #sec = 6 #int(input("Sector? ")) # int(os.path.basename(args.path[0]).split('_')[2])  # eleanor lightcurve gives sector number in filename
             cam = lc_info[4]
             mad_arr = mad_df.loc[:len(table) - 1, f"{sec}-{cam}"]
             mad_cut = mad_arr.values < (np.nanmedian(mad_arr) + 10 * np.std(mad_arr[900:950]))
@@ -105,8 +105,7 @@ def process_tess_file(f_path):
                 newchunk = (table['time'] < i[0]) | (table['time'] > i[1])
                 mask = mask & newchunk
 
-            new_lc = table[
-                ((table['quality'] == 0) | (table['quality'] != 0)) & mask & mad_cut]  # applying mad cut to lightcurve
+            new_lc = table[(table['quality'] == 0) & mask & mad_cut]  # applying mad cut to lightcurve
             to_clean = remove_zeros(new_lc)
             to_clean = to_clean['time', 'PCA flux', 'quality']
             t, flux, quality, real = clean_data(to_clean)
@@ -151,7 +150,7 @@ def process_tess_file(f_path):
 
 
 if __name__ == '__main__':
-
+    sec = int(input("Sector? "))
     pool = multiprocessing.Pool(processes=args.threads)
 
 

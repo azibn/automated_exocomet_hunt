@@ -4,7 +4,7 @@ from astropy.table import Table
 from scipy.optimize import curve_fit
 from astropy.timeseries import LombScargle
 import numpy as np
-import numpy as np
+cimport numpy as np
 import math
 import sys,os
 import kplr

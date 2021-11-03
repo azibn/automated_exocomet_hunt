@@ -11,38 +11,47 @@ import argparse
 import glob
 from tess_tools import *
 
-parser = argparse.ArgumentParser(description='Analyse target lightcurve.')
-parser.add_argument(help='Target lightcurve file',nargs=1,dest='fits_file')
-parser.add_argument('-n', help='No graphical output', action='store_true')
-parser.add_argument('-q', help='Keep only points with SAP_QUALITY=0',action='store_true')
+parser = argparse.ArgumentParser(description="Analyse target lightcurve.")
+parser.add_argument(help="Target lightcurve file", nargs=1, dest="fits_file")
+parser.add_argument("-n", help="No graphical output", action="store_true")
+parser.add_argument(
+    "-q", help="Keep only points with SAP_QUALITY=0", action="store_true"
+)
 
 
 args = parser.parse_args()
 
-"""If TESS lightcurve, follow the MAD steps. If Kepler lightcurve, skip to timestep"""
-if os.path.split(args.fits_file[0])[1][:4] == 'kplr':
+# If TESS lightcurve, apply MAD. If Kepler lightcurve, skip to timestep
+if os.path.split(args.fits_file[0])[1][:4] == "kplr":
     table = import_lightcurve(args.fits_file[0])
     t, flux, quality, real = clean_data(table)
 else:
 
-    table,lc_info = import_XRPlightcurve(args.fits_file[0])[0],import_XRPlightcurve(args.fits_file[0])[1]
-    table['normalised PCA'] = normalise_lc(table['PCA flux'])
+    table, lc_info = (
+        import_XRPlightcurve(args.fits_file[0])[0],
+        import_XRPlightcurve(args.fits_file[0])[1],
+    )
+    table["normalised PCA"] = normalise_lc(table["PCA flux"])
     bad_times = data.load_bad_times()
     bad_times = bad_times - 2457000
     mad_df = data.load_mad()
 
-    sec = int(os.path.basename(args.fits_file[0]).split('_')[2]) # eleanor lightcurve gives sector number in filename
+    sec = int(
+        input("Sector? ")
+    )  # int(os.path.basename(args.fits_file[0]).split('_')[2]) # eleanor lightcurve gives sector number in filename
     cam = lc_info[4]
-    mad_arr = mad_df.loc[:len(table)-1, f"{sec}-{cam}"]
-    mad_cut = mad_arr.values<(np.nanmedian(mad_arr)+10*np.std(mad_arr[900:950]))
-    mask = np.ones_like(table['time'], dtype=bool)
+    mad_arr = mad_df.loc[: len(table) - 1, f"{sec}-{cam}"]
+    mad_cut = mad_arr.values < (np.nanmedian(mad_arr) + 10 * np.std(mad_arr[900:950]))
+    mask = np.ones_like(table["time"], dtype=bool)
     for i in bad_times:
-        newchunk = (table['time']<i[0])|(table['time']>i[1])
+        newchunk = (table["time"] < i[0]) | (table["time"] > i[1])
         mask = mask & newchunk
 
-    new_lc = table[((table['quality']==0) | (table['quality']!=0)) & mask & mad_cut] # applying mad cut to lightcurve
-    to_clean = remove_zeros(new_lc)
-    to_clean = to_clean['time', 'PCA flux', 'quality']
+    new_lc = table[
+        (table["quality"] == 0) & mask & mad_cut
+    ]  # applying mad cut to lightcurve
+    to_clean = remove_zeros(new_lc)  # removing any zero points
+    to_clean = to_clean["time", "PCA flux", "quality"]
     t, flux, quality, real = clean_data(to_clean)
 timestep = calculate_timestep(table)
 
@@ -51,17 +60,19 @@ ones = np.ones(N)
 
 flux = normalise_flux(flux)
 
-filteredflux = fourier_filter(flux, 8)
+# filteredflux = fourier_filter(flux, 8) # returns smooth lc
 A_mag = np.abs(np.fft.rfft(flux))
-periodicnoise = flux - filteredflux
+# periodicnoise = flux - filteredflux
+
+
 sigma = flux.std()
 
 flux_ls = np.copy(flux)
-lombscargle_filter(t, flux_ls, real, 0.05)
+lombscargle_filter(t, flux_ls, real, 0.05)  # happens in place
 periodicnoise_ls = flux - flux_ls
 flux_ls = flux_ls * real
 
-T1 = test_statistic_array(filteredflux, 60)
+# T1 = test_statistic_array(filteredflux, 60)
 T = test_statistic_array(flux_ls, 60)
 data = nonzero(T)
 
@@ -82,10 +93,10 @@ print("Transit depth =", round(flux[trans_start:trans_end].mean(), 6))
 
 # Transit shape calculation
 if n - 3 * m >= 0 and n + 3 * m < N:
-    t2 = t[n - 3 * m:n + 3 * m]
-    x2 = flux_ls[n - 3 * m:n + 3 * m]
-    q2 = quality[n - 3 * m:n + 3 * m]
-    background = (sum(x2[:1 * m]) + sum(x2[5 * m:])) / (2 * m)
+    t2 = t[n - 3 * m : n + 3 * m]
+    x2 = flux_ls[n - 3 * m : n + 3 * m]
+    q2 = quality[n - 3 * m : n + 3 * m]
+    background = (sum(x2[: 1 * m]) + sum(x2[5 * m :])) / (2 * m)
     x2 -= background
     paramsgauss = single_gaussian_curve_fit(t2, -x2)
     y2 = -gauss(t2, *paramsgauss)
@@ -109,13 +120,13 @@ if args.n:
 
 # plt.xkcd()
 fig1, axarr = plt.subplots(4)
-axarr[0].plot(A_mag) #fourier plot
-axarr[0].title.set_text('Fourier plot')
-axarr[1].plot(t, flux + ones, t, periodicnoise_ls + ones) #
-axarr[2].plot(t, flux_ls + ones) # lomb-scargle plot
-axarr[2].title.set_text('Lomb-Scargle plot')
+axarr[0].plot(A_mag)  # fourier plot
+axarr[0].title.set_text("Fourier plot")
+axarr[1].plot(t, flux + ones, t, periodicnoise_ls + ones)  #
+axarr[2].plot(t, flux_ls + ones)  # lomb-scargle plot
+axarr[2].title.set_text("Lomb-Scargle plot")
 cax = axarr[3].imshow(T)
-axarr[3].set_aspect('auto')
+axarr[3].set_aspect("auto")
 fig1.colorbar(cax)
 
 # params = double_gaussian_curve_fit(T)
@@ -131,4 +142,3 @@ except:
     pass
 
 plt.show()
-
