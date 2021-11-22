@@ -462,8 +462,8 @@ def get_quality_indices(sap_quality):
 #
 #     return table, data[0:6]
 #
-# def normalise_lc(flux):
-#     return flux/flux.mean()
+def normalise_lc(flux):
+    return flux/flux.mean()
 #
 # def remove_zeros(data):
 #     return data[data['PCA flux'] != 0]
