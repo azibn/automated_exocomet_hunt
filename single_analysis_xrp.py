@@ -31,7 +31,7 @@ else:
         import_XRPlightcurve(args.fits_file[0])[0],
         import_XRPlightcurve(args.fits_file[0])[1],
     )
-    table["normalised PCA"] = normalise_lc(table["PCA flux"])
+    #table["normalised PCA"] = normalise_lc(table["PCA flux"])
     bad_times = data.load_bad_times()
     bad_times = bad_times - 2457000
     mad_df = data.load_mad()
@@ -50,7 +50,7 @@ else:
     new_lc = table[
         (table["quality"] == 0) & mask & mad_cut
     ]  # applying mad cut to lightcurve
-    to_clean = remove_zeros(new_lc)  # removing any zero points
+    to_clean = remove_zeros(new_lc,'PCA flux')  # removing any zero points
     to_clean = to_clean["time", "PCA flux", "quality"]
     t, flux, quality, real = clean_data(to_clean)
 timestep = calculate_timestep(table)
