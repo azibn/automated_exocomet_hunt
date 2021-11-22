@@ -1,3 +1,4 @@
+#cython: language_level=3
 import pandas as pd
 from astropy.io import fits
 from astropy.table import Table

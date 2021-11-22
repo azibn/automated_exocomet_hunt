@@ -7,7 +7,7 @@ import numpy
 
 setup(
         name = 'light_curve_analysis',
-        ext_modules = cythonize("analysis_tools_cython.pyx",language_level="3"),
+        ext_modules = cythonize("analysis_tools_cython.pyx",compiler_directives = {'language_level':3}),
         include_dirs=[numpy.get_include()]
 )
 
