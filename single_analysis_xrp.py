@@ -9,7 +9,7 @@ import sys
 import matplotlib.pyplot as plt
 import argparse
 import glob
-from tess_tools import *
+# from tess_tools import *
 
 parser = argparse.ArgumentParser(description="Analyse target lightcurve.")
 parser.add_argument(help="Target lightcurve file", nargs=1, dest="fits_file")
