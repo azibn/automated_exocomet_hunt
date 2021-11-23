@@ -37,24 +37,35 @@ def download_lightcurve(file, path='.'):
 def import_XRPlightcurve(file_path):
     """
     Importing the compressed TESS lightcurves from the XRP group.
+
     file_path: path to file
-    :type file_path: pkl
-    :returns: 
-        - lc - lightcurve data as a DataFrame. 
-        - store - Storage of other information (TIC, RA, Dec, TESS magnitude, Camera, Chip)
+    quality: specifies which
+
+    returns
+        - table: Astropy table format of lightcurve
+        - store: additional information about the lightcurve (TIC ID, camera, etc)
     """
     data = pd.read_pickle(file_path)
 
-    ## extracting the lightcurve data and converting to Series from lists
+    ## extracting the lightcurve data and converting from lists to Series
     for i in range(len(data)):
-        if isinstance(data[i],np.ndarray):
+        if isinstance(data[i], np.ndarray):
             data[i] = pd.Series(data[i])
-    for_df = data[6:] # data[0:6] is not relevant in this case.
-    columns = ['time','raw flux','corrected flux','PCA flux','flux error','quality']
+    for_df = data[6:]  # data[0:6] is not relevant in this case.
+    columns = [
+        "time",
+        "raw flux",
+        "corrected flux",
+        "PCA flux",
+        "flux error",
+        "quality",
+    ]
     df = pd.DataFrame(data=for_df).T
     df.columns = columns
+    df = df.loc[df["quality"] == 0] # only taking quality=0
+    table = Table.from_pandas(df)
 
-    return data, data[0:6]
+    return table, data[0:6]
 
 def import_lightcurve(file_path, drop_bad_points=False,
                       ok_flags=[5]):
