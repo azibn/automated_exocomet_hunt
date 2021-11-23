@@ -38,11 +38,15 @@ These scripts currently run on TESS and Kepler lightcurves. For TESS, we have cu
 Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/).
 
 `single_analysis.py` runs on a single file, for example:
+ 
+ TESS:
 
-    python single_analysis_xrp.py tess/tesslcs_sector_6_104_2_min_cadence_targets_tesslc_270577175.pkl
+    python single_analysis_xrp.py tesslcs_sector_6_104_2_min_cadence_targets_tesslc_270577175.pkl
+ 
+ Kepler:
 
     wget https://archive.stsci.edu/missions/kepler/lightcurves/0035/003542116/kplr003542116-2012088054726_llc.fits
-    ./single_analysis.py kplr003542116-2012088054726_llc.fits
+    python single_analysis.py kplr003542116-2012088054726_llc.fits
 
 
 `batch_analyse.py` runs on directories of files, outputting results to a text file with one row per file. `archive_analyse.sh` is a bash script for processing compressed archives of light curve files, extracting them temporarily to a directory.  Both these scripts have multiple options (number of threads, output file location ...), run with help flag (`-h`) for more details.
