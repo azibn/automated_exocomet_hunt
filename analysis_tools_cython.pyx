@@ -82,11 +82,11 @@ def import_lightcurve(file_path, drop_bad_points=False,
         return
 
     scidata = hdulist[1].data
-    table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
+    table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
 
     if drop_bad_points:
         bad_points = []
-        q_ind = get_quality_indices(table['QUALITY'])
+        q_ind = get_quality_indices(table['SAP_QUALITY'])
         for j,q in enumerate(q_ind):
             if j+1 not in ok_flags:
                 bad_points += q.tolist()
