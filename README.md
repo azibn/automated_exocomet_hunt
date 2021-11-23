@@ -1,15 +1,24 @@
-Code for automated detection of comets in light curves.
+Code for automated detection of potential exocomets in light curves.
 
 ### Installation
 
-This TESS portion of the project was developed with a Conda environment (latest tested in Python 3.8). Install by running in the terminal:
+Latest tested in Python 3.9
 	
 	git clone https://github.com/azibn/automated_exocomet_hunt
-	conda create -n <Environment Name>
-	conda activate <Environment Name> --file requirements.txt
+	conda create -f environment.yml
+	conda activate auto_exo
 	./make
 
-The original installation method is below, if the above does not work.
+Note: M1 users may have issues installing this due to the current tensorflow incompatibility. If you are not using the `eleanor` package, you can try:
+
+	git clone https://github.com/azibn/automated_exocomet_hunt
+	conda create -n <environment name> python jupyter jupyterlab scipy astropy numpy pandas pip cython matplotlib
+	conda activate <environment name>
+	./make
+ 
+If you still need to use `eleanor`, please see the [issues page](https://github.com/afeinstein20/eleanor/issues/188) for alternatives.
+
+The original installation is below, if neither of the above work.
 
 ----
 
@@ -23,11 +32,13 @@ Install by running:
 
 ### Usage
 
-These scripts now run on TESS and Kepler light curve files. For TESS, we specifically use Eleanor lightcurves taken from the XRP group only, saved as pickle files. Work in progress to utilise other TESS light curves (SPOC, TASOC etc) formats is ongoing. 
+These scripts currently run on TESS and Kepler lightcurves. For TESS, we have currently used Eleanor lightcurves kindly provided by the XRP group only, saved as pickle files and stored in a Google Bucket. Work in progress to utilise other TESS light curves (SPOC, TASOC etc) formats is ongoing. 
 
-Kepler light curves can be obtained from [MAST](https://archive.stsci.edu/kepler/)
+Kepler light curves can be obtained from [MAST](https://archive.stsci.edu/kepler/).
 
 `single_analysis.py` runs on a single file, for example:
+
+    python single_analysis_xrp.py tess/tesslcs_sector_6_104_2_min_cadence_targets_tesslc_270577175.pkl
 
     wget https://archive.stsci.edu/missions/kepler/lightcurves/0035/003542116/kplr003542116-2012088054726_llc.fits
     ./single_analysis.py kplr003542116-2012088054726_llc.fits
