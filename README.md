@@ -14,6 +14,7 @@ Note: M1 users may have issues installing this due to the current tensorflow inc
 	git clone https://github.com/azibn/automated_exocomet_hunt
 	conda create -n <environment name> python jupyter jupyterlab scipy astropy numpy pandas pip cython matplotlib
 	conda activate <environment name>
+	pip install lightkurve kplr
 	./make
  
 If you still need to use `eleanor`, please see the [issues page](https://github.com/afeinstein20/eleanor/issues/188) for alternatives.
@@ -32,9 +33,9 @@ Install by running:
 
 ### Usage
 
-These scripts currently run on TESS and Kepler lightcurves. For TESS, we have currently used Eleanor lightcurves kindly provided by the XRP group only, saved as pickle files and stored in a Google Bucket. Work in progress to utilise other TESS light curves (SPOC, TASOC etc) formats is ongoing. 
+These scripts currently run on TESS and Kepler lightcurves. For TESS, we have currently only used Eleanor lightcurves kindly provided by the XRP group, saved as pickle files and stored in a Google Bucket. Work in progress to utilise other lightcurve (SPOC, TASOC etc) formats is ongoing. 
 
-Kepler light curves can be obtained from [MAST](https://archive.stsci.edu/kepler/).
+Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/).
 
 `single_analysis.py` runs on a single file, for example:
 
