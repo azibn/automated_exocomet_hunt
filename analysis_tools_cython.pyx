@@ -110,6 +110,49 @@ def import_lightcurve(file_path, drop_bad_points=False,
 
     return table
 
+def import_SPOClightcurve(file_path, drop_bad_points=False,
+                      ok_flags=[5]):
+    """Returns (N by 2) table, columns are (time, flux).
+
+    Flags deemed to be OK are:
+    5 - reaction wheel zero crossing, matters for short cadence
+    """
+
+    try:
+        hdulist = fits.open(file_path)
+    except FileNotFoundError:
+        print("Import failed: file not found")
+        return
+
+    scidata = hdulist[1].data
+    table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
+
+    if drop_bad_points:
+        bad_points = []
+        q_ind = get_quality_indices(table['QUALITY'])
+        for j,q in enumerate(q_ind):
+            if j+1 not in ok_flags:
+                bad_points += q.tolist()
+
+        # bad_points = [i for i in range(len(table)) if table[i][2]>0]
+        table.remove_rows(bad_points)
+
+    # Delete rows containing NaN values.
+    nan_rows = [ i for i in range(len(table)) if
+            math.isnan(table[i][1]) or math.isnan(table[i][0]) ]
+
+    table.remove_rows(nan_rows)
+
+    # Smooth data by deleting overly 'spikey' points.
+    spikes = [ i for i in range(1,len(table)-1) if \
+            abs(table[i][1] - 0.5*(table[i-1][1]+table[i+1][1])) \
+            > 3*abs(table[i+1][1] - table[i-1][1])]
+
+    for i in spikes:
+        table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
+
+    return table
+
 def calculate_timestep(table):
     """Returns median value of time differences between data points,
     estimate of time delta data points."""
