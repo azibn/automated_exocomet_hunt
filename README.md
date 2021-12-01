@@ -35,7 +35,9 @@ Install by running:
 
 These scripts currently run on TESS and Kepler lightcurves. For TESS, we have currently only used Eleanor lightcurves kindly provided by the XRP group, saved as pickle files and stored in a Google Bucket. Work in progress to utilise other lightcurve (SPOC, TASOC etc) formats is ongoing. 
 
-Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/).
+Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/). 
+
+(In development): TESS SPOC lightcurves can also be obtained from [MAST](https://archive.stsci.edu/missions/tess/tid/).
 
 `single_analysis.py` runs on a single file, for example:
  
