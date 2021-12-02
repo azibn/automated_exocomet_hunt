@@ -53,6 +53,19 @@ Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/
 
 `batch_analyse.py` runs on directories of files, outputting results to a text file with one row per file. `archive_analyse.sh` is a bash script for processing compressed archives of light curve files, extracting them temporarily to a directory.  Both these scripts have multiple options (number of threads, output file location ...), run with help flag (`-h`) for more details.
 
+### Code Style
+Code style in `.py` scripts is formatted with [Black Python Formatter](https://black.readthedocs.io/en/stable/index.html) and must be standardised with Black before pushing to the repository. Black formatting checks run as part of the Git workflow. It is responsibility of the user to format their code before pushing to repo.
+
+To format your files, enter shell and run:
+
+`black scripts/<name_of_script>.py`
+
+or
+
+`black scripts/*`
+
+to format contents of the entire directory.
+
 ### Output
 
 https://github.com/greghope667/comet_project_results contains a description of the output table format produced by this code, as well as the output when run on the entire Kepler dataset. See there also for description of the format of the txt files with dips, and how to filter then with the awk scripts.
