@@ -99,7 +99,10 @@ def process_tess_file(f_path):
             #sec = 6 #int(input("Sector? ")) # int(os.path.basename(args.path[0]).split('_')[2])  # eleanor lightcurve gives sector number in filename
             cam = lc_info[4]
             mad_arr = mad_df.loc[:len(table) - 1, f"{sec}-{cam}"]
-            mad_cut = mad_arr.values < (np.nanmedian(mad_arr) + 10 * np.std(mad_arr[900:950]))
+            sig_clip = sigma_clip(mad_arr,sigma=3,masked=False)
+            med_sig_clip = np.nanmedian(sig_clip)
+            rms_sig_clip = np.std(sig_clip)
+            mad_cut = mad_arr.values<(med_sig_clip + 4*(np.std(sig_clip))) # using 4 sigma threshold
             mask = np.ones_like(table['time'], dtype=bool)
             for i in bad_times:
                 newchunk = (table['time'] < i[0]) | (table['time'] > i[1])
@@ -168,3 +171,4 @@ if __name__ == '__main__':
         file_paths_pkl = [os.path.join(path, f) for f in tqdm.tqdm(pkl_files)]
         pool.map(process_tess_file,file_paths_pkl)
 
+       ## for i in glob.glob('tesslcs_sectors_*_104/)
