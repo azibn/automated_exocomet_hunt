@@ -2,22 +2,22 @@ Code for automated detection of potential exocomets in light curves.
 
 ### Installation
 
-Latest tested in Python 3.9
+Latest tested in Python 3.7
 	
 	git clone https://github.com/azibn/automated_exocomet_hunt
-	conda create -f environment.yml
+	conda env create -f environment.yml
 	conda activate auto_exo
 	./make
 
-Note: M1 users may have issues installing this due to the current tensorflow incompatibility. If you are not using the `eleanor` package, you can try:
+Alternatively, you can try this:
 
 	git clone https://github.com/azibn/automated_exocomet_hunt
 	conda create -n <environment name> python jupyter jupyterlab scipy astropy numpy pandas pip cython matplotlib
 	conda activate <environment name>
-	pip install lightkurve kplr
+	pip install lightkurve kplr eleanor
 	./make
  
-If you still need to use `eleanor`, please see the [issues page](https://github.com/afeinstein20/eleanor/issues/188) for alternatives.
+Note: Different package versions may cause conflicts, so it is recommended to run this code using the virtual environment setup placed above. 
 
 The original installation is below, if neither of the above work.
 
