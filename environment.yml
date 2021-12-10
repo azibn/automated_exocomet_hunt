@@ -1,4 +1,4 @@
-name: automated_exocomet_test
+name: auto_exo
 channels:
   - conda-forge
   - defaults
