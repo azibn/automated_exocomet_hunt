@@ -82,11 +82,18 @@ def import_lightcurve(file_path, drop_bad_points=False,
         return
 
     scidata = hdulist[1].data
-    table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+    if 'kplr' in file_path:
+        table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+    elif 'tess' in file_path:
+        table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
 
     if drop_bad_points:
         bad_points = []
-        q_ind = get_quality_indices(table['SAP_QUALITY'])
+        if 'kplr' in file_path:
+            q_ind = get_quality_indices(table['SAP_QUALITY'])
+        elif 'tess' in file_path:
+            q_ind = get_quality_indices(table['QUALITY'])
+        
         for j,q in enumerate(q_ind):
             if j+1 not in ok_flags:
                 bad_points += q.tolist()
@@ -157,9 +164,9 @@ def calculate_timestep(table):
     """Returns median value of time differences between data points,
     estimate of time delta data points."""
 
-    dt = [ table[i+1][0] - table[i][0] for i in range(len(table)-1) ]
+    dt = [ table[i+1][0] - table[i][0] for i in range(len(table)-1) ] # calculates difference between (ith+1) - (ith) point 
     dt.sort()
-    return dt[int(len(dt)/2)]
+    return dt[int(len(dt)/2)] # median of them.
 
 def clean_data(table):
     """Interpolates missing data points, so we have equal time gaps
@@ -262,7 +269,7 @@ def lombscargle_filter(time,flux,real,min_score):
 
 def test_statistic_array(np.ndarray[np.float64_t,ndim=1] flux, int max_half_width):
     cdef int N = flux.shape[0]
-    cdef int n = max_half_width
+    cdef int n = max_half_width # int(max_half_width) max number of cadences in width array should be 120 (2.5 days)
 
     cdef int i, m, j
     cdef float mu,sigma,norm_factor
@@ -270,20 +277,24 @@ def test_statistic_array(np.ndarray[np.float64_t,ndim=1] flux, int max_half_widt
 
     cdef np.ndarray[dtype=np.float64_t,ndim=2] t_test = np.zeros([2*n,N])
 #    cdef np.ndarray[dtype=np.float64_t,ndim=1] flux_points = np.zeros(2*n)
-    for m in range(1,2*n):
+    """
+    m: number of cadences
+    """
+    for m in range(1,2*n): # looping over the different (full) widths
 
-        m1 = math.floor((m-1)/2)
-        m2 = (m-1) - m1
+        m1 = math.floor((m-1)/2) # indices for that width 
+        m2 = (m-1) - m1 # upper bound
 
-        norm_factor = 1 / (m**0.5 * sigma)
+        norm_factor = 1 / (m**0.5 * sigma) # noise
 
         mu = flux[0:m].sum()
         t_test[m][m1] = mu * norm_factor
 
-        for i in range(m1+1,N-m2-1):
+        for i in range(m1+1,N-m2-1): # the actual search from start of lc to end of lc
+        #"""starts from slightly inside the lightcurve"""
 
             ##t_test[m][i] = flux[(i-m1):(i+m2+1)].sum() * norm_factor
-            mu += (flux[i+m2] - flux[i-m1-1])
+            mu += (flux[i+m2] - flux[i-m1-1]) # flux between some point and sum
             t_test[m][i] = mu * norm_factor
 
     return t_test
