@@ -3,6 +3,7 @@
 from analysis_tools_cython import *
 from functools import reduce
 import data
+import os
 import loaders
 import pandas as pd
 import sys
@@ -22,12 +23,10 @@ parser.add_argument(
 args = parser.parse_args()
 
 # If TESS lightcurve, apply MAD. If Kepler lightcurve, skip to timestep
-if os.path.split(args.fits_file[0])[1].startswith('kplr'):
+if (os.path.split(args.fits_file[0])[1].startswith('kplr')) or (os.path.split(args.fits_file[0])[1].startswith("tess") and os.path.split(args.fits_file[0])[1].endswith("fits")):
     table = import_lightcurve(args.fits_file[0])
     t, flux, quality, real = clean_data(table)
-elif (os.path.split(args.fits_file[0])[1][5:9] == "tess") and (os.path.split(args.fits_file[0]).endswith("fits")):
-    table = import_SPOClightcurve(args.fits_file[0])
-    t, flux, quality, real = clean_data(table)
+
 else:
 
     table, lc_info = (
@@ -39,9 +38,7 @@ else:
     bad_times = bad_times - 2457000
     mad_df = data.load_mad()
 
-    sec = int(
-        input("Sector? ")
-    )  # int(os.path.basename(args.fits_file[0]).split('_')[2]) # eleanor lightcurve gives sector number in filename
+    sec = int(os.path.basename(args.fits_file[0]).split('_')[2]) # eleanor lightcurve gives sector number in filename
     cam = lc_info[4]
     mad_arr = mad_df.loc[: len(table) - 1, f"{sec}-{cam}"]
     mad_cut = mad_arr.values < (np.nanmedian(mad_arr) + 10 * np.std(mad_arr[900:950]))
@@ -56,8 +53,12 @@ else:
     to_clean = remove_zeros(new_lc,'PCA flux')  # removing any zero points
     to_clean = to_clean["time", "PCA flux", "quality"]
     t, flux, quality, real = clean_data(to_clean)
+
 timestep = calculate_timestep(table)
 
+""""The default assumption is a 30-minute cadence."""
+factor = ((1/48)/timestep)
+ 
 N = len(t)
 ones = np.ones(N)
 
@@ -71,12 +72,12 @@ A_mag = np.abs(np.fft.rfft(flux))
 sigma = flux.std()
 
 flux_ls = np.copy(flux)
-lombscargle_filter(t, flux_ls, real, 0.05)  # happens in place
+lombscargle_filter(t, flux_ls, real, 0.05)  # happens in-place. 0.05 is minimum score
 periodicnoise_ls = flux - flux_ls
 flux_ls = flux_ls * real
 
 # T1 = test_statistic_array(filteredflux, 60)
-T = test_statistic_array(flux_ls, 60)
+T = test_statistic_array(flux_ls, 60 * factor)
 data = nonzero(T)
 
 # Find minimum test statistic value, and its location.
@@ -84,6 +85,7 @@ m, n = np.unravel_index(T.argmin(), T.shape)
 minT = T[m, n]
 minT_time = t[n]
 minT_duration = m * timestep
+print("Timestep of lightcurve: ", round(timestep * 1440,3), "minutes.")
 print("Maximum transit chance:")
 print("   Time =", round(minT_time, 2), "days.")
 print("   Duration =", round(minT_duration, 2), "days.")
