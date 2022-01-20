@@ -165,7 +165,7 @@ if __name__ == '__main__':
             print(path,'not a directory, skipping.',file=sys.stderr)
             continue
 
-        fits_files = [f for f in tqdm.tqdm(os.listdir(path)) if f.endswith('.fits')]
+        fits_files = [f for f in tqdm.tqdm(os.listdir(path)) if f.endswith('lc.fits')]
         file_paths = [os.path.join(path,f) for f in tqdm.tqdm(fits_files)]
         pool.map(process_file,file_paths)
 
