@@ -150,12 +150,11 @@ def import_lightcurve(file_path, drop_bad_points=True,
     if 'kplr' in file_path:
         table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
     elif 'tess' in file_path:
-        try:
-            #table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
-            time = scidata.TIME
-            flux = scidata.PDCSAP_FLUX
-            quality = scidata.QUALITY
-            table = Table([time,flux,quality],names=('TIME','PDCSAP_FLUX','QUALITY'))
+        #table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
+        time = scidata.TIME
+        flux = scidata.PDCSAP_FLUX
+        quality = scidata.QUALITY
+        table = Table([time,flux,quality],names=('TIME','PDCSAP_FLUX','QUALITY'))
 
 
     if drop_bad_points:
