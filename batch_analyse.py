@@ -3,7 +3,6 @@
 import os
 os.environ['OMP_NUM_THREADS']='1'
 from analysis_tools_cython import *
-from tess_tools import *
 import multiprocessing
 import sys
 import traceback
