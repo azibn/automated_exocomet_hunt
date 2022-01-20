@@ -2,6 +2,7 @@
 # import os; os.environ['OMP_NUM_THREADS']='1'
 from analysis_tools_cython import *
 from functools import reduce
+from astropy.stats import sigma_clip, sigma_clipped_stats
 import data
 import os
 import loaders
@@ -28,29 +29,11 @@ if (os.path.split(args.fits_file[0])[1].startswith('kplr')) or (os.path.split(ar
     t, flux, quality, real = clean_data(table)
 
 else:
-
-    table, lc_info = (
-        import_XRPlightcurve(args.fits_file[0])[0],
-        import_XRPlightcurve(args.fits_file[0])[1],
+    table,lc_info = ( 
+        import_XRPlightcurve(args.fits_file[0],sector=6,mad_plot=True)[0],
+        import_XRPlightcurve(args.fits_file[0],sector=6,mad_plot=True)[1],    
     )
-    #table["normalised PCA"] = normalise_lc(table["PCA flux"])
-    bad_times = data.load_bad_times()
-    bad_times = bad_times - 2457000
-    mad_df = data.load_mad()
-
-    sec = int(os.path.basename(args.fits_file[0]).split('_')[2]) # eleanor lightcurve gives sector number in filename
-    cam = lc_info[4]
-    mad_arr = mad_df.loc[: len(table) - 1, f"{sec}-{cam}"]
-    mad_cut = mad_arr.values < (np.nanmedian(mad_arr) + 10 * np.std(mad_arr[900:950]))
-    mask = np.ones_like(table["time"], dtype=bool)
-    for i in bad_times:
-        newchunk = (table["time"] < i[0]) | (table["time"] > i[1])
-        mask = mask & newchunk
-
-    new_lc = table[
-        (table["quality"] == 0) & mask & mad_cut
-    ]  # applying mad cut to lightcurve
-    to_clean = remove_zeros(new_lc,'PCA flux')  # removing any zero points
+    to_clean = remove_zeros(table,'PCA flux')  # removing any zero points
     to_clean = to_clean["time", "PCA flux", "quality"]
     t, flux, quality, real = clean_data(to_clean)
 
@@ -60,6 +43,7 @@ timestep = calculate_timestep(table)
 factor = ((1/48)/timestep)
  
 N = len(t)
+print(N,"length of cleaned lightcurve")
 ones = np.ones(N)
 
 flux = normalise_flux(flux)
@@ -80,8 +64,8 @@ flux_ls = flux_ls * real
 T = test_statistic_array(flux_ls, 60 * factor)
 data = nonzero(T)
 
-# Find minimum test statistic value, and its location.
-m, n = np.unravel_index(T.argmin(), T.shape)
+# Find minimum test statistic value (m), and its location (n).
+m, n = np.unravel_index(T.argmin(), T.shape) # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
 minT = T[m, n]
 minT_time = t[n]
 minT_duration = m * timestep
@@ -97,10 +81,12 @@ trans_end = trans_start + m
 print("Transit depth =", round(flux[trans_start:trans_end].mean(), 6))
 
 # Transit shape calculation
-if n - 3 * m >= 0 and n + 3 * m < N:
+if n - 3 * m >= 0 and n + 3 * m < N:  # m: width of point(s) in lc. first part: 3 transit widths away from first data point. last part: not more than 3 transit widths away. 
     t2 = t[n - 3 * m : n + 3 * m]
     x2 = flux_ls[n - 3 * m : n + 3 * m]
-    q2 = quality[n - 3 * m : n + 3 * m]
+    q2 = quality[n - 3 * m : n + 3 * m] # quality points from three transit widths to other edge of three transit widths.
+    print(n - 3 * m , "  n-3*m")
+    print(n+3*m),"n+3*m"
     background = (sum(x2[: 1 * m]) + sum(x2[5 * m :])) / (2 * m)
     x2 -= background
     paramsgauss = single_gaussian_curve_fit(t2, -x2)
@@ -112,7 +98,7 @@ if n - 3 * m >= 0 and n + 3 * m < N:
     print(scores)
     print("Asym score:", round(scores[0] / scores[1], 4))
 
-    qual_flags = reduce(lambda a, b: a or b, q2)
+    qual_flags = reduce(lambda a, b: a or b, q2) # reduces to single value of quality flags
     print("Quality flags:", qual_flags)
 
 # Classify events
@@ -130,6 +116,7 @@ axarr[0].title.set_text("Fourier plot")
 axarr[1].plot(t, flux + ones, t, periodicnoise_ls + ones)  #
 axarr[2].plot(t, flux_ls + ones)  # lomb-scargle plot
 axarr[2].title.set_text("Lomb-Scargle plot")
+
 cax = axarr[3].imshow(T)
 axarr[3].set_aspect("auto")
 fig1.colorbar(cax)
