@@ -24,7 +24,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 # If TESS lightcurve, apply MAD. If Kepler lightcurve, skip to timestep
-if (os.path.split(args.fits_file[0])[1].startswith('kplr')) or (os.path.split(args.fits_file[0])[1].startswith("tess") and os.path.split(args.fits_file[0])[1].endswith("fits")):
+if (os.path.split(args.fits_file[0])[1].startswith('kplr')) or (os.path.split(args.fits_file[0])[1].startswith("hlsp_tess") and os.path.split(args.fits_file[0])[1].endswith("fits")):
     table = import_lightcurve(args.fits_file[0])
     t, flux, quality, real = clean_data(table)
 
