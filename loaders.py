@@ -22,8 +22,10 @@ class LightCurveCollection:
             data={"sector": sec, "camera": cam, "file": files}
             )
         self.factor = factor
+        self.normalize = True
         self.useCpus = 1
         self.mad_table = data.load_mad()
+        self.bad_times = data.load_bad_times()
         self.__load_scmad()
         self.__calc_cutmask()
         self.__calc_log_weight()
@@ -106,6 +108,30 @@ class LightCurveCollection:
 
         return self.mad_scaler
 
+    def load_raw_lc(self, miniref):
+        """Load a light curve without our masks or weights.
+        
+        The LC will still be normalized and have non-zero quality flags removed.
+        args:
+            miniref - any python object with 'file', 'sector', and 'camera' attributes
+        """
+        f = miniref.file
+        sec = miniref.sector
+        cam = miniref.camera
+
+        lc = load_lc(f)
+
+        lc = lc.remove_nans()
+        if (lc.flux < 0).any():
+            lc.flux = lc.flux+min(lc.flux)
+
+        nfluxes = np.array(lc.flux/abs(np.nanmedian(lc.flux)))
+        lc.flux = nfluxes
+
+        assert len(lc) > 100, f"Check TIC {lc_copy.targetid}"
+
+        return lc
+
     def load_cut_lc(self, miniref):
         """Load a masked light curve.
         args:
@@ -119,21 +145,22 @@ class LightCurveCollection:
         # ! with the cutmask from the MAD array
         lc = load_lc(f)
         sc = f"{sec}-{cam}"
-        # all the masks
+        # Quality flag mask and MAD threshold mask
         lc = lc[self.cutmask[sc].values & (lc.quality == 0)].remove_nans()
-        if np.nanmedian(lc.flux) < 0:
-            # A negative median results from bad background subtraction
-            # Normalizing (w/o inverting) makes the median -1, so we translate
-            # the light curve up to make the median positive.
-            lc.flux += 2*abs(np.nanmedian(lc.flux))
+        # Ethan Kruse's bad times
+        for br in self.bad_times:
+            lc = lc[((lc.time.value < br[0]) | (lc.time.value > br[1]))]
 
-        nfluxes = np.array(lc.flux/abs(np.nanmedian(lc.flux)))
-        lc.flux = nfluxes
-        lc_copy = lc[lc.flux >= 0]  # one final mask
+        # shift all flux positive in case of bad bkgd subtraction
+        if (lc.flux < 0).any():
+            lc.flux = lc.flux+2*abs(min(lc.flux))  # iffy
+        if self.normalize:
+            nfluxes = np.array(lc.flux/abs(np.nanmedian(lc.flux)))
+            lc.flux = nfluxes
+        
+        assert len(lc) > 100, f"Check TIC {lc.targetid}"
 
-        assert len(lc_copy) > 100, f"Check TIC {lc_copy.targetid}"
-
-        return lc_copy.remove_outliers()
+        return lc
 
     def load_weighted_lc(self, miniref):
         f = miniref.file
@@ -142,12 +169,21 @@ class LightCurveCollection:
 
         # import all light curves for the sector/camera combination
         lc = load_lc(f)
-        sc = f"{sec}-{cam}"
+        # shift all flux positive in case of bad bkgd subtraction
+        if (lc.flux < 0).any():
+            lc.flux = lc.flux+min(lc.flux)
+
         nfluxes = np.array(lc.flux/np.nanmedian(lc.flux))
+
+        sc = f"{sec}-{cam}"
         nfluxes = (nfluxes-1)*self.mad_scaler[sc]+1  # scaled fluxes
         lc.flux = nfluxes
-        mask = (lc.quality == 0) & (lc.flux >= 0)
-        lc = lc[mask].remove_nans()
+
+        lc = lc[lc.quality == 0].remove_nans()
+        # Ethan Kruse's bad times
+        for br in self.bad_times:
+            lc = lc[((lc.time.value < br[0]) | (lc.time.value > br[1]))]
+
         return lc
 
     def load_all_lcs(self, method: str = 'cut'):
@@ -161,12 +197,15 @@ class LightCurveCollection:
                 self.lcs = [self.load_weighted_lc(self.ref.iloc[i])
                             for i in range(len(self.ref))]
         else:
-            # todo: update for weighted
-            with Pool(self.useCpus) as p:
-                minirefs = [self.ref.iloc[i] for i in range(len(self.ref))]
-                self.lcs = p.map(self.load_cut_lc, minirefs, chunksize=500)
-        # with Pool(useCpus) as p:
-        #    lcs = p.map(load_weighted_lc, files, chunksize=100)
+            if method == "cut":
+                with Pool(self.useCpus) as p:
+                    minirefs = [self.ref.iloc[i] for i in range(len(self.ref))]
+                    self.lcs = p.map(self.load_cut_lc, minirefs, chunksize=500)
+            elif method == "log_w":
+                with Pool(self.useCpus) as p:
+                    minirefs = [self.ref.iloc[i] for i in range(len(self.ref))]
+                    self.lcs = p.map(self.load_weighted_lc, minirefs, chunksize=500)
+
         self.loaded = True
         return
 
