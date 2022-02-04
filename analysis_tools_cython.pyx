@@ -40,7 +40,7 @@ def download_lightcurve(file, path='.'):
     _ = lcs[i].open() # force download
     return lcs[i].filename
 
-def import_XRPlightcurve(file_path,sector,q=0,clip=3,drop_bad_points=False,ok_flags=[23],mad_plot=False,return_type='astropy'):
+def import_XRPlightcurve(file_path,sector,clip=3,drop_bad_points=True,ok_flags=[0],return_type='astropy'):
     """
     file_path: path to file
     sector = lightcurve sector
@@ -69,25 +69,37 @@ def import_XRPlightcurve(file_path,sector,q=0,clip=3,drop_bad_points=False,ok_fl
         "quality",
     ]
     df = pd.DataFrame(data=for_df).T 
-    print(len(df),"at import")
     df.columns = columns
 
     table = Table.from_pandas(df)
 
+    # loading Ethan Kruse bad times
     bad_times = data.load_bad_times()
     bad_times = bad_times - 2457000
+    # loading MAD 
     mad_df = data.load_mad()
     sec = sector
     camera = lc[4]
     mad_arr = mad_df.loc[:len(table)-1,f"{sec}-{camera}"]
     sig_clip = sigma_clip(mad_arr,sigma=clip,masked=True)
-    med_sig_clip = np.nanmedian(sig_clip)
-    rms_sig_clip = np.nanstd(sig_clip)
-    mad_cut = mad_arr.values < (med_sig_clip + clip*(rms_sig_clip))
-    matched_ind = np.where(~mad_cut) # returns indices of values above MAD threshold
-    table['quality'][np.array(matched_ind)] = 23 # set quality flag 23
 
-    # apply mask for bad times not captured in quality = 0
+    # applied MAD cut to keep points within selected sigma
+    mad_cut = mad_arr.values < ~sig_clip.mask #(med_sig_clip + clip*(rms_sig_clip))
+    # return indices of values above MAD threshold
+    matched_ind = np.where(mad_cut) 
+
+    # a bit of pandas trickery to make quality = 23, but not overriding existing flags
+    df = table.to_pandas()
+    b = pd.Series(np.asarray(matched_ind)[0])
+    sliced = df.iloc[b]
+    sliced['quality'][sliced['quality'] == 0] = 23
+    df['quality'].iloc[sliced[sliced.quality == 23].index] = 23
+    
+    table = Table.from_pandas(df) 
+
+    table['quality'] = table['quality'].astype("int32")
+
+    # Ethan Kruse bad time mask
     mask = np.ones_like(table['time'], dtype=bool)
     for i in bad_times:
         newchunk = (table['time']<i[0])|(table['time']>i[1])
@@ -101,12 +113,6 @@ def import_XRPlightcurve(file_path,sector,q=0,clip=3,drop_bad_points=False,ok_fl
             if j+1 not in ok_flags:
                 bad_points += q.tolist()
     
-        
-    if mad_plot:
-        mad_plots(table=table,array=mad_arr,median=med_sig_clip,rms=rms_sig_clip,clip=clip,sector=sec,camera=camera)
-    
-    # completes masking of array elements representing non-zero flags (excludes quality flag 23; above MAD threshold values are excluded to get clean lightcurve)
-    table = table[table['quality'] == 0] 
     
     # Delete rows containing NaN values. 
     nan_rows = [ i for i in range(len(table)) if
@@ -124,15 +130,15 @@ def import_XRPlightcurve(file_path,sector,q=0,clip=3,drop_bad_points=False,ok_fl
         table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
 
     if return_type == 'pandas':
-        print(len(table),"cleaned")
+
         return table.to_pandas(), lc[0:6]
     else:
-        print(len(table),"cleaned") 
+
         return table, lc[0:6]
 
 
 
-def import_lightcurve(file_path, drop_bad_points=True,
+def import_lightcurve(file_path, drop_bad_points=False,
                       ok_flags=[5]):
     """Returns (N by 2) table, columns are (time, flux).
 
@@ -150,13 +156,13 @@ def import_lightcurve(file_path, drop_bad_points=True,
     if 'kplr' in file_path:
         table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
     elif 'tess' in file_path:
-        try:
-            table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
-        except:
-            time = scidata.TIME
-            flux = scidata.PDCSAP_FLUX
-            quality = scidata.QUALITY
-            table = Table([time,flux,quality],names=('TIME','PDCSAP_FLUX','QUALITY'))
+        #try:
+        table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
+        #except:
+        #    time = scidata.TIME
+        #    flux = scidata.PDCSAP_FLUX
+        #    quality = scidata.QUALITY
+        #    table = Table([time,flux,quality],names=('TIME','PDCSAP_FLUX','QUALITY'))
 
 
     if drop_bad_points:
@@ -246,7 +252,6 @@ def clean_data(table):
         flux.append(fi)
         quality.append(qi)
         real.append(1)
-    print(len([np.array(x) for x in [time,flux,quality,real]]),'interpolated')
     return [np.array(x) for x in [time,flux,quality,real]]
 
 

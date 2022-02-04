@@ -24,22 +24,23 @@ parser.add_argument(
 args = parser.parse_args()
 
 # If TESS lightcurve, apply MAD. If Kepler lightcurve, skip to timestep
-if (os.path.split(args.fits_file[0])[1].startswith('kplr')) or (os.path.split(args.fits_file[0])[1].startswith("hlsp_tess") and os.path.split(args.fits_file[0])[1].endswith("fits")):
+if (os.path.split(args.fits_file[0])[1].startswith('kplr')) or (os.path.split(args.fits_file[0])[1].startswith("hlsp_tess") and os.path.split(args.fits_file[0])[1].endswith("fits") or os.path.split(args.fits_file[0])[1].startswith("tess") and os.path.split(args.fits_file[0])[1].endswith("fits")):
     table = import_lightcurve(args.fits_file[0])
     t, flux, quality, real = clean_data(table)
 
 else:
     table,lc_info = ( 
-        import_XRPlightcurve(args.fits_file[0],sector=6,mad_plot=True)[0],
-        import_XRPlightcurve(args.fits_file[0],sector=6,mad_plot=True)[1],    
+        import_XRPlightcurve(args.fits_file[0],sector=6)[0],
+        import_XRPlightcurve(args.fits_file[0],sector=6)[1],    
     )
-    to_clean = remove_zeros(table,'PCA flux')  # removing any zero points
-    to_clean = to_clean["time", "PCA flux", "quality"]
+    to_clean = remove_zeros(table,'corrected flux')  # removing any zero points
+    to_clean = to_clean["time", "corrected flux", "quality"]
+    print(len(to_clean),"before interpolation")
     t, flux, quality, real = clean_data(to_clean)
 
 timestep = calculate_timestep(table)
 
-""""The default assumption is a 30-minute cadence."""
+# The default is a 30-minute cadence.
 factor = ((1/48)/timestep)
  
 N = len(t)
@@ -51,7 +52,6 @@ flux = normalise_flux(flux)
 # filteredflux = fourier_filter(flux, 8) # returns smooth lc
 A_mag = np.abs(np.fft.rfft(flux))
 # periodicnoise = flux - filteredflux
-
 
 sigma = flux.std()
 
@@ -85,8 +85,6 @@ if n - 3 * m >= 0 and n + 3 * m < N:  # m: width of point(s) in lc. first part: 
     t2 = t[n - 3 * m : n + 3 * m]
     x2 = flux_ls[n - 3 * m : n + 3 * m]
     q2 = quality[n - 3 * m : n + 3 * m] # quality points from three transit widths to other edge of three transit widths.
-    print(n - 3 * m , "  n-3*m")
-    print(n+3*m),"n+3*m"
     background = (sum(x2[: 1 * m]) + sum(x2[5 * m :])) / (2 * m)
     x2 -= background
     paramsgauss = single_gaussian_curve_fit(t2, -x2)
@@ -95,7 +93,6 @@ if n - 3 * m >= 0 and n + 3 * m < N:  # m: width of point(s) in lc. first part: 
     w2 = -comet_curve(t2, *paramscomet)
 
     scores = [score_fit(x2, fit) for fit in [y2, w2]]
-    print(scores)
     print("Asym score:", round(scores[0] / scores[1], 4))
 
     qual_flags = reduce(lambda a, b: a or b, q2) # reduces to single value of quality flags
