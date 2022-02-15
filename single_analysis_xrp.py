@@ -2,6 +2,7 @@
 # import os; os.environ['OMP_NUM_THREADS']='1'
 from analysis_tools_cython import *
 from functools import reduce
+from astropy.table import Table, unique
 from astropy.stats import sigma_clip, sigma_clipped_stats
 import data
 import os
@@ -26,17 +27,23 @@ args = parser.parse_args()
 # If TESS lightcurve, apply MAD. If Kepler lightcurve, skip to timestep
 if (os.path.split(args.fits_file[0])[1].startswith('kplr')) or (os.path.split(args.fits_file[0])[1].startswith("hlsp_tess") and os.path.split(args.fits_file[0])[1].endswith("fits") or os.path.split(args.fits_file[0])[1].startswith("tess") and os.path.split(args.fits_file[0])[1].endswith("fits")):
     table = import_lightcurve(args.fits_file[0])
+    plt.plot(table['TIME'],normalise_lc(table['PDCSAP_FLUX']))
+    plt.savefig("spoc test")
     t, flux, quality, real = clean_data(table)
 
 else:
     table,lc_info = ( 
-        import_XRPlightcurve(args.fits_file[0],sector=6)[0],
-        import_XRPlightcurve(args.fits_file[0],sector=6)[1],    
+        import_XRPlightcurve(args.fits_file[0],sector=6,clip=4,drop_bad_points=True)[0],
+        import_XRPlightcurve(args.fits_file[0],sector=6,clip=4,drop_bad_points=True)[1],    
     )
-    to_clean = remove_zeros(table,'corrected flux')  # removing any zero points
-    to_clean = to_clean["time", "corrected flux", "quality"]
-    print(len(to_clean),"before interpolation")
+    fig, axarr = plt.subplots(1)
+    print(len(table['time']),": length of lightcurve")
+    print(unique(table,'quality'))
+    to_clean = table["time", "corrected flux", "quality"]
+    plt.scatter(table['time'],normalise_lc(table['corrected flux']),s=5)
+    plt.savefig(f'figs_tess/lightcurve {lc_info[0]} at import')
     t, flux, quality, real = clean_data(to_clean)
+
 
 timestep = calculate_timestep(table)
 
@@ -44,7 +51,6 @@ timestep = calculate_timestep(table)
 factor = ((1/48)/timestep)
  
 N = len(t)
-print(N,"length of cleaned lightcurve")
 ones = np.ones(N)
 
 flux = normalise_flux(flux)
@@ -131,3 +137,4 @@ except:
     pass
 
 plt.show()
+fig1.savefig("figs_tess/fourier plots",dpi=300)
