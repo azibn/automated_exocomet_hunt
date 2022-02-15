@@ -13,7 +13,6 @@ import kplr
 import data
 import warnings
 warnings.filterwarnings("ignore")
-
 from matplotlib import pyplot as plt
 
 
@@ -40,7 +39,7 @@ def download_lightcurve(file, path='.'):
     _ = lcs[i].open() # force download
     return lcs[i].filename
 
-def import_XRPlightcurve(file_path,sector,clip=3,drop_bad_points=True,ok_flags=[0],return_type='astropy'):
+def import_XRPlightcurve(file_path,sector,clip=4,drop_bad_points=True,ok_flags=[9],return_type='astropy'):
     """
     file_path: path to file
     sector = lightcurve sector
@@ -70,9 +69,9 @@ def import_XRPlightcurve(file_path,sector,clip=3,drop_bad_points=True,ok_flags=[
     ]
     df = pd.DataFrame(data=for_df).T 
     df.columns = columns
-
+    
     table = Table.from_pandas(df)
-
+    #print(len(table),"length at import")
     # loading Ethan Kruse bad times
     bad_times = data.load_bad_times()
     bad_times = bad_times - 2457000
@@ -83,27 +82,37 @@ def import_XRPlightcurve(file_path,sector,clip=3,drop_bad_points=True,ok_flags=[
     mad_arr = mad_df.loc[:len(table)-1,f"{sec}-{camera}"]
     sig_clip = sigma_clip(mad_arr,sigma=clip,masked=True)
 
-    # applied MAD cut to keep points within selected sigma
-    mad_cut = mad_arr.values < ~sig_clip.mask #(med_sig_clip + clip*(rms_sig_clip))
-    # return indices of values above MAD threshold
-    matched_ind = np.where(mad_cut) 
+    # setting zero quality only
+    #table = table[table['quality'] == 0]
 
-    # a bit of pandas trickery to make quality = 23, but not overriding existing flags
+    # applied MAD cut to keep points within selected sigma
+    #mad_cut = mad_arr.values < med_sig_clip + clip*(rms_sig_clip)
+    mad_cut = mad_arr.values < ~sig_clip.mask # --> check this one. Could it be .data?
+    #print(len(mad_cut),"length of mad cut")
+    
+    # return indices of values above MAD threshold
+    matched_ind = np.where(~mad_cut) # indices of MAD's above threshold
+
+
+    # a bit of pandas trickery to make quality = 2**13, but not overriding existing flags
     df = table.to_pandas()
     b = pd.Series(np.asarray(matched_ind)[0])
-    sliced = df.iloc[b]
-    sliced['quality'][sliced['quality'] == 0] = 23
-    df['quality'].iloc[sliced[sliced.quality == 23].index] = 23
+    sliced = df.iloc[b] # subset of main dataframe which returns dataframe of the matched indexes
+    sliced['quality'][sliced['quality'] == 0] = 2**9
+    df['quality'].iloc[sliced[sliced.quality == 2**9].index] = 2**9 # two-step process to change quality index to non-zero
+
     
     table = Table.from_pandas(df) 
-
-    table['quality'] = table['quality'].astype("int32")
+    table['quality'] = table['quality'].astype(np.int32) # int32 set so it can work with `get_quality_indices` function
 
     # Ethan Kruse bad time mask
     mask = np.ones_like(table['time'], dtype=bool)
     for i in bad_times:
         newchunk = (table['time']<i[0])|(table['time']>i[1])
         mask = mask & newchunk
+        
+    # Apply Kruse bad mask to table
+    table = table[mask]
 
     if drop_bad_points:
         bad_points = []
@@ -112,14 +121,15 @@ def import_XRPlightcurve(file_path,sector,clip=3,drop_bad_points=True,ok_flags=[
         for j,q in enumerate(q_ind): # j=index, q=quality
             if j+1 not in ok_flags:
                 bad_points += q.tolist()
-    
+        table.remove_rows(bad_points)
+
     
     # Delete rows containing NaN values. 
     nan_rows = [ i for i in range(len(table)) if
             math.isnan(table[i][2]) or math.isnan(table[i][0]) ] # -> check this 
 
     table.remove_rows(nan_rows)
-
+    #print(len(table),"length after drop bad points")
 
     # Smooth data by deleting overly 'spikey' points.
     spikes = [ i for i in range(1,len(table)-1) if \
@@ -128,6 +138,7 @@ def import_XRPlightcurve(file_path,sector,clip=3,drop_bad_points=True,ok_flags=[
 
     for i in spikes:
         table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
+    #print(len(table),"length at end")
 
     if return_type == 'pandas':
 
@@ -135,7 +146,6 @@ def import_XRPlightcurve(file_path,sector,clip=3,drop_bad_points=True,ok_flags=[
     else:
 
         return table, lc[0:6]
-
 
 
 def import_lightcurve(file_path, drop_bad_points=False,
@@ -162,9 +172,7 @@ def import_lightcurve(file_path, drop_bad_points=False,
         #    time = scidata.TIME
         #    flux = scidata.PDCSAP_FLUX
         #    quality = scidata.QUALITY
-        #    table = Table([time,flux,quality],names=('TIME','PDCSAP_FLUX','QUALITY'))
-
-
+  
     if drop_bad_points:
         bad_points = []
         if 'kplr' in file_path:
