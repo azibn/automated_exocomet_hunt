@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # First have to disable inbuilt multithreading for performance reasons.
 import os
+#import pandas as pd
+os.nice(8)
 os.environ['OMP_NUM_THREADS']='1'
 from analysis_tools_cython import *
 import multiprocessing
@@ -61,7 +63,7 @@ def process_file(f_path):
             m,n = np.unravel_index(T.argmin(),T.shape)
             Tm = T[m,n]
             Tm_time = t[n]
-            Tm_duration = m*calculate_timestep(table)
+            Tm_duration = m*calculate_timestep(table) # <- can change this to `timestep` as it's already defined
             Tm_start = n-math.floor((m-1)/2)
             Tm_end = Tm_start + m
             Tm_depth = flux[Tm_start:Tm_end].mean()
@@ -94,10 +96,10 @@ def process_tess_file(f_path):
     try:
         f = os.path.basename(f_path)
         print(f_path)
-        table= (import_XRPlightcurve(f_path,sector=sector_test)[0])
+        table= (import_XRPlightcurve(f_path,sector=sector_test,clip=3)[0])
         #print(table)
         if len(table) > 120:
-            to_clean = table["time", "PCA flux", "quality"]
+            to_clean = table["time", "corrected flux", "quality"]
             t, flux, quality, real = clean_data(to_clean)
            
             timestep = calculate_timestep(table)
@@ -169,15 +171,15 @@ if __name__ == '__main__':
 
         else:
             print("globbing subdirectories")
-            if "SPOC" in  os.getcwd():
+            #if "SPOC" in  os.getcwd():
             # Start at Sector directory, glob goes through `target/000x/000x/xxxx/**/*lc.fits`
-                fits_files = tqdm.tqdm(glob.glob(os.path.join(path,'**/*lc.fits'))) # target/**/**/**/
-            # Starts at 
-                pkl_files = glob.glob(os.path.join(path,'**/*.pkl'))
+            fits_files = glob.glob(os.path.join(path,'target/**/**/**/**/*lc.fits')) # 
+            # Starts at sector directory. globs files in one subdirectory level below
+            pkl_files = glob.glob(os.path.join(path,'**/*.pkl'))
 
-                pool.map(process_file,fits_files)
-                pool.map(process_tess_file,pkl_files)
-  
+            pool.map(process_file,fits_files)
+            pool.map(process_tess_file,pkl_files)
+
     
         # file_paths = [os.path.join(path,f) for f in tqdm.tqdm(fits_files)]
         # pool.map(process_file,file_paths)
@@ -186,8 +188,5 @@ if __name__ == '__main__':
         # pkl_files = [f for f in tqdm.tqdm(os.listdir(path)) if f.endswith('.pkl')]
         # file_paths_pkl = [os.path.join(path, f) for f in tqdm.tqdm(pkl_files)]
         # pool.map(process_tess_file,file_paths_pkl)
-
-        #print(glob.glob('tess/4112/0759/*lc.fits'))
-        #(glob.iglob(os.path.join(path,'*/*.pkl')),"globbed")
        
         

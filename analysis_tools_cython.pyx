@@ -69,12 +69,13 @@ def import_XRPlightcurve(file_path,sector,clip=4,drop_bad_points=True,ok_flags=[
     ]
     df = pd.DataFrame(data=for_df).T 
     df.columns = columns
-    
+
     table = Table.from_pandas(df)
-    #print(len(table),"length at import")
+
     # loading Ethan Kruse bad times
     bad_times = data.load_bad_times()
     bad_times = bad_times - 2457000
+    
     # loading MAD 
     mad_df = data.load_mad()
     sec = sector
@@ -86,23 +87,14 @@ def import_XRPlightcurve(file_path,sector,clip=4,drop_bad_points=True,ok_flags=[
     #table = table[table['quality'] == 0]
 
     # applied MAD cut to keep points within selected sigma
-    #mad_cut = mad_arr.values < med_sig_clip + clip*(rms_sig_clip)
-    mad_cut = mad_arr.values < ~sig_clip.mask # --> check this one. Could it be .data?
-    #print(len(mad_cut),"length of mad cut")
+    mad_cut = mad_arr.values < ~sig_clip.mask 
     
     # return indices of values above MAD threshold
     matched_ind = np.where(~mad_cut) # indices of MAD's above threshold
 
-
-    # a bit of pandas trickery to make quality = 2**13, but not overriding existing flags
-    df = table.to_pandas()
-    b = pd.Series(np.asarray(matched_ind)[0])
-    sliced = df.iloc[b] # subset of main dataframe which returns dataframe of the matched indexes
-    sliced['quality'][sliced['quality'] == 0] = 2**9
-    df['quality'].iloc[sliced[sliced.quality == 2**9].index] = 2**9 # two-step process to change quality index to non-zero
-
-    
-    table = Table.from_pandas(df) 
+    # Change quality of matched indices to 2**13 (or add 2**13 if existing flag already present)
+    table['quality'][matched_ind] += 2**13
+ 
     table['quality'] = table['quality'].astype(np.int32) # int32 set so it can work with `get_quality_indices` function
 
     # Ethan Kruse bad time mask
@@ -129,7 +121,6 @@ def import_XRPlightcurve(file_path,sector,clip=4,drop_bad_points=True,ok_flags=[
             math.isnan(table[i][2]) or math.isnan(table[i][0]) ] # -> check this 
 
     table.remove_rows(nan_rows)
-    #print(len(table),"length after drop bad points")
 
     # Smooth data by deleting overly 'spikey' points.
     spikes = [ i for i in range(1,len(table)-1) if \
