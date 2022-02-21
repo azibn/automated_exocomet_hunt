@@ -68,10 +68,11 @@ flux_ls = flux_ls * real
 
 # T1 = test_statistic_array(filteredflux, 60)
 T = test_statistic_array(flux_ls, 60 * factor)
-data = nonzero(T)
+data_nonzeroT = nonzero(T)
 
 # Find minimum test statistic value (m), and its location (n).
 m, n = np.unravel_index(T.argmin(), T.shape) # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
+# unravel_index: return values tell us what should have been the indices of the array if it was *not* flattened.
 minT = T[m, n]
 minT_time = t[n]
 minT_duration = m * timestep
@@ -80,7 +81,7 @@ print("Maximum transit chance:")
 print("   Time =", round(minT_time, 2), "days.")
 print("   Duration =", round(minT_duration, 2), "days.")
 print("   T =", round(minT, 1))
-print("   T/sigma =", round(minT / data.std(), 1))
+print("   T/sigma =", round(minT / data_nonzeroT.std(), 1))
 
 trans_start = n - math.floor((m - 1) / 2)
 trans_end = trans_start + m
