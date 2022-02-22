@@ -2,6 +2,9 @@
 analysis_tools_cython.c*
 build
 
+# old Kepler files
+archive_analyse.sh
+
 # Data folders
 light_curves
 results
