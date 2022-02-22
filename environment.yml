@@ -26,3 +26,4 @@ dependencies:
     - lightkurve>=2
     - eleanor
     - kplr
+    - markupsafe==2.0.1
