@@ -34,3 +34,10 @@ kplr003542116-2012088054726_llc.fits
 notebooks/Untitled.ipynb
 old_kepler_files/
 tess2018206190142-s0001-s0006-0000000270577175-00196_dvt.fits
+
+# data
+output.txt
+output_xrp_s4.txt
+output_xrp_s5.txt
+output_xrp_s6.txt
+output_xrp_s7.txt
