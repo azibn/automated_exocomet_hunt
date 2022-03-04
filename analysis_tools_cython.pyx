@@ -39,14 +39,14 @@ def download_lightcurve(file, path='.'):
     _ = lcs[i].open() # force download
     return lcs[i].filename
 
-def import_XRPlightcurve(file_path,sector,clip=4,drop_bad_points=True,ok_flags=[9],return_type='astropy'):
+def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],return_type='astropy'):
     """
     file_path: path to file
     sector = lightcurve sector
     drop_bad_points: Removing outlier points. Default False
     mad_plots: plots MAD comparisons
     q: lightcurve quality, default 0 (excludes all non-zero quality)
-    clip: Sigma to be clipped by (default 3)
+    clip: Sigma to be clipped by (default 4)
     return_type: Default 'astropy'. Pandas DataFrame also available with 'pandas' 
 
     returns
@@ -139,7 +139,7 @@ def import_XRPlightcurve(file_path,sector,clip=4,drop_bad_points=True,ok_flags=[
         return table, lc[0:6]
 
 
-def import_lightcurve(file_path, drop_bad_points=False,
+def import_lightcurve(file_path, drop_bad_points=False, flux='PDCSAP_FLUX',
                       ok_flags=[5]):
     """Returns (N by 2) table, columns are (time, flux).
 
@@ -155,10 +155,10 @@ def import_lightcurve(file_path, drop_bad_points=False,
 
     scidata = hdulist[1].data
     if 'kplr' in file_path:
-        table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+        table = Table(scidata)['TIME',flux,'SAP_QUALITY']
     elif 'tess' in file_path:
         #try:
-        table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
+        table = Table(scidata)['TIME',flux,'QUALITY']
         #except:
         #    time = scidata.TIME
         #    flux = scidata.PDCSAP_FLUX
@@ -566,3 +566,86 @@ def mad_plots(table,array,median,rms,clip,sector,camera):
     ax.set_title(f'Cadence at {sector}-{camera}')
     ax.legend()
     plt.show()
+
+def processing(table,f_path): # ,one_lc_analysis=False
+    f = os.path.basename(f_path)
+    if len(table) > 120: # 120 represents 2.5 days
+        t, flux, quality, real = clean_data(table)
+
+        # now throw away interpolated points (we're reprocessing
+        # and trying to get the shape parameters right)
+        #t = t[np.array(real,dtype=bool)]
+        #flux = flux[np.array(real,dtype=bool)]
+        #quality = quality[np.array(real,dtype=bool)]
+        #real = real[np.array(real,dtype=bool)]
+        N = len(t)
+        ones = np.ones(N)
+        timestep = calculate_timestep(table)
+        
+        flux = normalise_flux(flux)
+
+        A_mag = np.abs(np.fft.rfft(flux))
+        # periodicnoise = flux - filteredflux
+
+        sigma = flux.std()
+
+        flux_ls = np.copy(flux) # used in single_analysis
+        
+        factor = ((1/48)/timestep)
+        lombscargle_filter(t,flux,real,0.05)
+        #lombscargle_filter(t,flux_ls,real,0.05) # used in single_analysis
+        periodicnoise_ls = flux - flux_ls # used in single_analysis
+        flux_ls = flux_ls * real # used in single_analysis
+        flux = flux*real
+        T = test_statistic_array(flux,60 * factor)
+        T_ls = test_statistic_array(flux_ls,60 * factor)
+        data_nonzeroT_ls = nonzero(T_ls)
+
+
+        Ts = nonzero(T).std()
+        m,n = np.unravel_index(T.argmin(),T.shape)
+        Tm = T[m,n]
+        Tm_time = t[n]
+        Tm_duration = m*timestep
+        Tm_start = n-math.floor((m-1)/2)
+        Tm_end = Tm_start + m
+        Tm_depth = flux[Tm_start:Tm_end].mean()
+
+        asym, width1, width2 = calc_shape(m,n,t,flux)
+        s = classify(m,n,real,asym)
+        Tm_info = [A_mag,Ts,m,n,Tm,Tm_time,Tm_duration,Tm_start,Tm_end,Tm_depth,Ts]
+        result_str =\
+                f+' '+\
+                ' '.join([str(round(a,8)) for a in
+                    [Tm, Tm/Ts, Tm_time,
+                    asym,width1,width2,
+                    Tm_duration,Tm_depth]])+\
+                ' '+s
+
+        #if one_lc_analysis:
+        #    t2, x2, y2, w2 = single_analysis(m,n,N,Tm,Tm_time,Tm_duration)
+        #    single_transit_info = [t2,x2,y2,w2]
+    else:
+        result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
+
+    return result_str, Tm_info
+
+def folders_in(path_to_parent):
+    # Identifies if directory is the lowest directory to perform search
+    for fname in os.listdir(path_to_parent):
+        if os.path.isdir(os.path.join(path_to_parent,fname)):
+            yield os.path.join(path_to_parent,fname)
+
+# def single_analysis(n,m,N,Tm,Tm_time,Tm_duration):
+#     if n - 3 * m >= 0 and n + 3 * m < N:  # m: width of point(s) in lc. first part: 3 transit widths away from first data point. last part: not more than 3 transit widths away. 
+#         t2 = t[n - 3 * m : n + 3 * m]
+#         x2 = flux_ls[n - 3 * m : n + 3 * m]
+#         q2 = quality[n - 3 * m : n + 3 * m] # quality points from three transit widths to other edge of three transit widths.
+#         background = (sum(x2[: 1 * m]) + sum(x2[5 * m :])) / (2 * m)
+#         x2 -= background
+#         paramsgauss = single_gaussian_curve_fit(t2, -x2)
+#         y2 = -gauss(t2, *paramsgauss)
+#         paramscomet = comet_curve_fit(t2, -x2)
+#         w2 = -comet_curve(t2, *paramscomet)
+
+#         return t2,x2,y2,w2
