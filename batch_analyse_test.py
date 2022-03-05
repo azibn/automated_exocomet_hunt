@@ -48,7 +48,7 @@ def mission_lightcurves(f_path):
         f = os.path.basename(f_path)
         print(f)
         table = import_lightcurve(f_path, flux=args.f,drop_bad_points=args.q)
-        processing(table,f_path)
+        result_str = processing(table,f_path)
         lock.acquire()
         with open(args.of,'a') as out_file:
             out_file.write(result_str+'\n')
@@ -95,7 +95,7 @@ if __name__ == '__main__':
             # this should work for both Kepler and TESS fits files.
             fits_files = glob.glob(os.path.join(path,'*lc.fits'))
             pkl_files = glob.glob(os.path.join(path,'*.pkl'))
-            
+
             pool.map(mission_lightcurves, fits_files)
             pool.map(xrp_lightcurves,pkl_files)
 
