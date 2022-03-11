@@ -6,12 +6,10 @@ build
 archive_analyse.sh
 
 # Data folders
-light_curves
 results
 tess2018206045859-s0001-0000000024265755-0120-s_lc.fits
 tess_SPOC/
 tess_testlcs/
-data_old/ # before Daniel updated MAD df
 
 # Temp vim files
 *.swp
@@ -36,8 +34,3 @@ old_kepler_files/
 tess2018206190142-s0001-s0006-0000000270577175-00196_dvt.fits
 
 # data
-output.txt
-output_xrp_s4.txt
-output_xrp_s5.txt
-output_xrp_s6.txt
-output_xrp_s7.txt
