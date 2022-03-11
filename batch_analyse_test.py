@@ -101,7 +101,7 @@ def single_file(f_path):
 
 if __name__ == '__main__':
 
-    sector_test = int(input("Sector? ")) #args.path[0].split('_')[-2] # this is the case for XRP lightcurves... This is not required for mission lightcurves so it is ok to not consider them.
+    sector_test = args.path[0].split('_')[-2] # int(input("Sector? ")) # this is the case for XRP lightcurves... This is not required for mission lightcurves so it is ok to not consider them.
     pool = multiprocessing.Pool(processes=args.threads)
 
     for path in paths:
@@ -129,7 +129,7 @@ if __name__ == '__main__':
             fits_files = glob.glob(os.path.join(path,'target/**/**/**/**/*lc.fits')) 
 
             # These are test SPOC files that I have in my home CSC directory
-            test_fits = glob.glob(os.path.join(path,'**/**/*lc.fits'))
+            #test_fits = glob.glob(os.path.join(path,'**/**/*lc.fits'))
 
             # Starts at sector directory. globs files in one subdirectory level below
             pkl_files = glob.glob(os.path.join(path,'**/*.pkl'))
