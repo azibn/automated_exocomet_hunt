@@ -542,8 +542,8 @@ def d2q(d):
 def get_quality_indices(sap_quality):
     '''Return list of indices where each quality bit is set'''
     q_indices = []
-    for bit in np.arange(21)+1:
-        q_indices.append(np.where(sap_quality >> (bit-1) & 1 == 1)[0])
+    for bit in np.arange(13)+1:
+        q_indices.append(np.where(sap_quality >> (bit-1) & 1 == 1)[0]) # returns sap_quality as bit (2**bit) 
 
     return q_indices
 
@@ -567,7 +567,11 @@ def mad_plots(table,array,median,rms,clip,sector,camera):
     ax.legend()
     plt.show()
 
-def processing(table,f_path,single_analysis=False): # ,one_lc_analysis=False
+def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
+    """ performing the processing of the lightcurves to get 
+    
+    """
+
     f = os.path.basename(f_path)
     if len(table) > 120: # 120 represents 2.5 days
         t, flux, quality, real = clean_data(table)
@@ -591,29 +595,22 @@ def processing(table,f_path,single_analysis=False): # ,one_lc_analysis=False
 
         factor = ((1/48)/timestep)
 
-        if single_analysis:
-            flux_ls = np.copy(flux) # used in single_analysis
-            lombscargle_filter(t,flux_ls,real,0.05) # used in single_analysis
-            periodicnoise_ls = flux - flux_ls # used in single_analysis
-            flux_ls = flux_ls * real # used in single_analysis
-            T = test_statistic_array(flux_ls,60 * factor)
-            Ts = nonzero(T).std()
+        flux_ls = np.copy(flux) 
+        lombscargle_filter(t,flux_ls,real,0.05) # used in single_analysis
+        periodicnoise_ls = flux - flux_ls # used in single_analysis
+        flux_ls = flux_ls * real # used in single_analysis
+        T = test_statistic_array(flux_ls,60 * factor)
+        Ts = nonzero(T).std()
 
-        else:
-            lombscargle_filter(t,flux,real,0.05)
-            flux = flux*real
-            T = test_statistic_array(flux,60 * factor)
-            Ts = nonzero(T).std()
-        
         m,n = np.unravel_index(T.argmin(),T.shape)
         Tm = T[m,n]
         Tm_time = t[n]
         Tm_duration = m*timestep
         Tm_start = n-math.floor((m-1)/2)
         Tm_end = Tm_start + m
-        Tm_depth = flux[Tm_start:Tm_end].mean() # original single_analysis did not use flux_ls, so assume flux is ok.
+        Tm_depth = flux_ls[Tm_start:Tm_end].mean() # original single_analysis did not use flux_ls, so assume flux is ok.
 
-        asym, width1, width2 = calc_shape(m,n,t,flux)
+        asym, width1, width2 = calc_shape(m,n,t,flux_ls) # flux_ls not used here for single analysis, change.
         s = classify(m,n,real,asym)
         
         result_str =\
@@ -624,10 +621,37 @@ def processing(table,f_path,single_analysis=False): # ,one_lc_analysis=False
                     Tm_duration,Tm_depth]])+\
                 ' '+s
         
-        if single_analysis:
-            Tm_info = [m,n,Tm,Tm_time,Tm_duration,Tm_depth,Ts] # separating the variables to not have excessive number of returns
-            params = [A_mag,periodicnoise_ls,flux,flux_ls,T,N,ones]
-            return Tm_info, params
+        if make_plots:
+            fig, axarr = plt.subplots(5,figsize=(8,7))
+            axarr[0].plot(A_mag)  # fourier plot
+            axarr[0].title.set_text("Fourier plot")
+            axarr[1].plot(t, flux + ones) # the lightcurve
+            axarr[1].plot(t, periodicnoise_ls + ones,c='orange')  # the periodic noise
+            axarr[1].title.set_text("Periodic noise plot")
+            axarr[2].plot(t, flux_ls + ones)  # lomb-scargle plot
+            axarr[2].title.set_text("Lomb-Scargle plot")
+            cax = axarr[3].imshow(T)
+            axarr[3].set_ylabel('Normalized flux + offset')
+            axarr[3].set_xlabel('BJD - 2457000')
+            axarr[3].set_ylabel('Transit width in timesteps')
+            axarr[3].set_aspect("auto")
+            fig.colorbar(cax)
+            fig.tight_layout()
+
+            # do i need to add the transit width condition?
+            t2, x2, y2, w2, q2 = transit_shape(table,m,n,flux_ls)
+            try:
+                axarr[4].plot(t2, x2, t2, y2, t2, w2)
+                axarr[4].set_title('Transit shape in box')
+            except:
+                pass
+
+            try:
+                os.makedirs("plots") # make directory plot if it doesn't exist
+            except FileExistsError:
+                pass
+                
+            fig.savefig(f'plots/analysis_plots_{f}.png')
 
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
@@ -635,15 +659,34 @@ def processing(table,f_path,single_analysis=False): # ,one_lc_analysis=False
     return result_str
 
 def folders_in(path_to_parent):
-    # Identifies if directory is the lowest directory to perform search
+    """Identifies if directory is the lowest directory"""
     for fname in os.listdir(path_to_parent):
         if os.path.isdir(os.path.join(path_to_parent,fname)):
             yield os.path.join(path_to_parent,fname)
 
-def transit_shape(table,m,n,N,params):
+def transit_shape(table,m,n,flux):
+    """Calculating the shape of the asymmetric transit given the lightcurve, the parameters of the T statsitic (m and n), and parameters 
+    (mainly the lomb-scargle flux) obtained from `processing`.
+    
+    m: value of the minimum T statistic
+    n: the location of the minimum T statistic if it was *not* a flattened array.
+    params: parameters [A_mag,periodicnoise_ls,flux,flux_ls,T,N,ones] called by index. Only N (params[3]) is used.
+    
+
+    returns:
+    - t2: time values in between box region
+    - x2: flux values in between box region
+    - y2: gaussian curve fit for the dip
+    - w2: a comet curve fit for the dip
+    - q2: quality values in between box region
+
+    note: y2 and w2 are used to determine the asymmetry of the dip, and will be used to calculate an asymmetry score of the dip.
+    """
+
+
     t,_,quality,_ = clean_data(table)
     t2 = t[n - 3 * m : n + 3 * m]
-    x2 = params[3][n - 3 * m : n + 3 * m]
+    x2 = flux[n - 3 * m : n + 3 * m]
     q2 = quality[n - 3 * m : n + 3 * m] # quality points from three transit widths to other edge of three transit widths.
     background = (sum(x2[: 1 * m]) + sum(x2[5 * m :])) / (2 * m)
     x2 -= background
@@ -651,11 +694,5 @@ def transit_shape(table,m,n,N,params):
     y2 = -gauss(t2, *paramsgauss)
     paramscomet = comet_curve_fit(t2, -x2)
     w2 = -comet_curve(t2, *paramscomet)
-
-    #scores = [score_fit(x2, fit) for fit in [y2, w2]]
-    #print("Asym score:", round(scores[0] / scores[1], 4))
-
-    #qual_flags = reduce(lambda a, b: a or b, q2) # reduces to single value of quality flags
-    #print("Quality flags:", qual_flags)
 
     return t2, x2, y2, w2, q2 

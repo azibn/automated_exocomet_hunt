@@ -26,26 +26,27 @@ if (os.path.split(args.fits_file[0])[1].startswith('kplr')) or (os.path.split(ar
 
 else:
     table,lc_info = ( 
-        import_XRPlightcurve(args.fits_file[0],sector=6,clip=args.c,drop_bad_points=True)[0],
-        import_XRPlightcurve(args.fits_file[0],sector=6,clip=args.c,drop_bad_points=True)[1],    
+        import_XRPlightcurve(args.fits_file[0],sector=6,clip=args.c,drop_bad_points=True)   
     )
     table = table["time", args.f, "quality"]
-    t, flux, quality, real = clean_data(to_clean) # only kept because t is needed for plotting and transit shape purposes...
+    t, flux, quality, real = clean_data(to_clean) # only kept because t is needed for plotting and transit shape...
 
 N = len(t)
 ones = np.ones(N)
-timestep = calculate_timestep(table)
+timestep = calculate_timestep(table) # kept for plotting
 
 Tm_info,params = processing(table,args.fits_file[0],single_analysis=True)
 
 ## Getting transit information
-print("Timestep of lightcurve: ", round(timestep * 1440,3), "minutes.")
-print("Maximum transit chance:")
-print("   Time =", round(Tm_info[3], 2), "days.")
-print("   Duration =", round(Tm_info[4], 2), "days.")
-print("   T =", round(Tm_info[2], 1))
-print("   T/sigma =", round(Tm_info[2] / Tm_info[-1], 1))
-print("Transit depth =", round(Tm_info[5], 6))
+print("Information about transit:")
+print(" Length of lightcurve: ",N)
+print(" Timestep of lightcurve: ", round(timestep * 1440,3), "minutes.")
+print(" Maximum transit chance:")
+print("     Time =", round(Tm_info[3], 2), "days.")
+print("     Duration =", round(Tm_info[4], 2), "days.")
+print("     T =", round(Tm_info[2], 1))
+print("     T/sigma =", round(Tm_info[2] / Tm_info[-1], 1))
+print("     Transit depth =", round(Tm_info[5], 6))
 
 m = Tm_info[0]
 n = Tm_info[1]

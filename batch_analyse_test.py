@@ -29,6 +29,7 @@ parser.add_argument('-o',default=f'output.txt',dest='of',help='output file')
 parser.add_argument('-q', help='Keep only points with SAP_QUALITY=0',action='store_true')
 parser.add_argument('-f',help='select flux. "PDCSAP_FLUX is default. XRP lightcurve options are "corrected flux", "PCA flux" or "raw flux"',dest='f',default='PDCSAP_FLUX')
 parser.add_argument('-c',help='select sigma clipping threshold for XRP lightcurves.', dest='c',default=4,type=int)
+parser.add_argument('-p',help='enable plotting',action='store_true')
 
 # Get directories from command line arguments.
 args = parser.parse_args()
@@ -67,7 +68,7 @@ def xrp_lightcurves(f_path):
         print(f_path)
         table = import_XRPlightcurve(f_path,sector=sector_test,clip=args.c)[0]
         table = table["time", args.f, "quality"]
-        result_str = processing(table,f_path)
+        result_str = processing(table,f_path,make_plots=args.p)
         lock.acquire()
         with open(args.of,'a') as out_file:
             out_file.write(result_str+'\n')
@@ -79,13 +80,35 @@ def xrp_lightcurves(f_path):
         print("\nError with file "+f_path,file=sys.stderr)
         traceback.print_exc()
 
+def single_file(f_path):
+    try:
+        f = os.path.basename(f_path)
+        print(f_path)
+        table = import_XRPlightcurve(f_path,sector=sector_test,clip=args.c)[0]
+        table = table["time", args.f, "quality"]
+        result_str = processing(table,f_path,make_plots=args.p)
+        #lock.acquire()
+        #with open(args.of,'a') as out_file:
+        #    out_file.write(result_str+'\n')
+        #lock.release()
+    except (KeyboardInterrupt, SystemExit):
+        print("Process terminated early, exiting",file=sys.stderr)
+        raise
+    except Exception as e:
+        print("\nError with file "+f_path,file=sys.stderr)
+        traceback.print_exc()
+
+
 if __name__ == '__main__':
-    sector_test = args.path[0].split('_')[-2] # this is the case for XRP lightcurves... This is not required for mission lightcurves so it is ok to not consider them.
+
+    sector_test = int(input("Sector? ")) #args.path[0].split('_')[-2] # this is the case for XRP lightcurves... This is not required for mission lightcurves so it is ok to not consider them.
     pool = multiprocessing.Pool(processes=args.threads)
 
     for path in paths:
         if not os.path.isdir(path):
-            print(path,'not a directory, skipping.',file=sys.stderr)
+            result_str = single_file(path)
+            print(type(result_str))
+            #print(path,'not a directory, skipping.',file=sys.stderr)
             continue
         
         # if we are in the lowest subdirectory, perform glob this way.
