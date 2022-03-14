@@ -51,6 +51,7 @@ def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],
 
     returns
         - table: Astropy table of lightcurve
+        - ok_flags = [14]: the MAD excluded data.
         - info: additional information about the lightcurve (TIC ID, RA, DEC, TESS magnitude, Camera, Chip)
     """
     lc = pd.read_pickle(file_path)
@@ -542,7 +543,7 @@ def d2q(d):
 def get_quality_indices(sap_quality):
     '''Return list of indices where each quality bit is set'''
     q_indices = []
-    for bit in np.arange(13)+1:
+    for bit in np.arange(21)+1:
         q_indices.append(np.where(sap_quality >> (bit-1) & 1 == 1)[0]) # returns sap_quality as bit (2**bit) 
 
     return q_indices
@@ -639,8 +640,9 @@ def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
             fig.tight_layout()
 
             # do i need to add the transit width condition?
-            t2, x2, y2, w2, q2 = transit_shape(table,m,n,flux_ls)
+            
             try:
+                t2, x2, y2, w2, q2 = transit_shape(table,m,n,flux_ls)
                 axarr[4].plot(t2, x2, t2, y2, t2, w2)
                 axarr[4].set_title('Transit shape in box')
             except:
