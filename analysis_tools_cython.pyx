@@ -574,6 +574,7 @@ def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
     """
 
     f = os.path.basename(f_path)
+    tic = f.split('_')[-1].split('.pkl')[0]
     if len(table) > 120: # 120 represents 2.5 days
         t, flux, quality, real = clean_data(table)
 
@@ -637,6 +638,7 @@ def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
             axarr[3].set_ylabel('Transit width in timesteps')
             axarr[3].set_aspect("auto")
             fig.colorbar(cax)
+            fig.suptitle(f'TIC {tic}')
             fig.tight_layout()
 
             # do i need to add the transit width condition?
@@ -653,7 +655,7 @@ def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
             except FileExistsError:
                 pass
                 
-            fig.savefig(f'plots/analysis_plots_{f}.png')
+            fig.savefig(f'plots/analysis_plot_{tic}.pdf')
 
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
