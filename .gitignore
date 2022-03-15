@@ -11,6 +11,11 @@ tess2018206045859-s0001-0000000024265755-0120-s_lc.fits
 tess_SPOC/
 tess_testlcs/
 betapic/
+kepler/
+
+# output files
+output_s*
+
 
 # Temp vim files
 *.swp
