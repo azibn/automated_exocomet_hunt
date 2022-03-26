@@ -93,8 +93,8 @@ def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],
     # return indices of values above MAD threshold
     matched_ind = np.where(~mad_cut) # indices of MAD's above threshold
 
-    # Change quality of matched indices to 2**13 (or add 2**13 if existing flag already present)
-    table['quality'][matched_ind] += 2**13
+    # Change quality of matched indices to 2**(17-1) (or add 2**(17-1) if existing flag already present)
+    table['quality'][matched_ind] += 2**(17-1)
  
     table['quality'] = table['quality'].astype(np.int32) # int32 set so it can work with `get_quality_indices` function
 
@@ -598,7 +598,7 @@ def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
         factor = ((1/48)/timestep)
 
         flux_ls = np.copy(flux) 
-        lombscargle_filter(t,flux_ls,real,0.05) # used in single_analysis
+        lombscargle_filter(t,flux_ls,real,0.3) # used in single_analysis
         periodicnoise_ls = flux - flux_ls # used in single_analysis
         flux_ls = flux_ls * real # used in single_analysis
         T = test_statistic_array(flux_ls,60 * factor)

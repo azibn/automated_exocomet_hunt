@@ -12,6 +12,8 @@ tess_SPOC/
 tess_testlcs/
 betapic/
 kepler/
+gif/
+mad_figs
 
 # output files
 output_s*

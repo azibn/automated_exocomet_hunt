@@ -35,7 +35,8 @@ N = len(t)
 ones = np.ones(N)
 timestep = calculate_timestep(table) # kept for plotting
 
-Tm_info,params = processing(table,args.fits_file[0],single_analysis=True)
+Tm_info = processing(table,f_path=args.fits_file[0],make_plots=False)
+
 
 ## Getting transit information
 print("Information about transit:")
