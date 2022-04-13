@@ -598,7 +598,7 @@ def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
         factor = ((1/48)/timestep)
 
         flux_ls = np.copy(flux) 
-        lombscargle_filter(t,flux_ls,real,0.3) # used in single_analysis
+        lombscargle_filter(t,flux_ls,real,0.05) # used in single_analysis
         periodicnoise_ls = flux - flux_ls # used in single_analysis
         flux_ls = flux_ls * real # used in single_analysis
         T = test_statistic_array(flux_ls,60 * factor)
@@ -630,8 +630,8 @@ def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
             axarr[1].plot(t, flux + ones) # the lightcurve
             axarr[1].plot(t, periodicnoise_ls + ones,c='orange')  # the periodic noise
             axarr[1].title.set_text("Periodic noise plot")
-            axarr[2].plot(t, flux_ls + ones)  # lomb-scargle plot
-            axarr[2].title.set_text("Lomb-Scargle plot")
+            axarr[2].plot(t, flux_ls + ones) 
+            axarr[2].title.set_text("Noise-removed plot")
             cax = axarr[3].imshow(T)
             axarr[3].set_ylabel('Normalized flux + offset')
             axarr[3].set_xlabel('BJD - 2457000')

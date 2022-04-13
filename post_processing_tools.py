@@ -89,6 +89,6 @@ def distribution(x,y):
     ax.scatter(x,y,s=1)
     ax.set_xlim(-0,1.9)
     ax.set_ylim(5,30)
-    ax.set_xlabel('$\\alpha$')
-    ax.set_ylabel('$S$')
+    ax.set_xlabel('$\\alpha$',fontsize=16)
+    ax.set_ylabel('$S$',fontsize=16)
     fig.tight_layout()
