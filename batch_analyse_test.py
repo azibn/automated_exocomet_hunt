@@ -50,6 +50,10 @@ def mission_lightcurves(f_path):
         print(f)
         table = import_lightcurve(f_path, flux=args.f,drop_bad_points=args.q)
         result_str = processing(table,f_path)
+        try:
+            os.makedirs("output_log") # make directory plot if it doesn't exist
+        except FileExistsError:
+            pass
         lock.acquire()
         with open(args.of,'a') as out_file:
             out_file.write(result_str+'\n')
@@ -70,7 +74,11 @@ def xrp_lightcurves(f_path):
         table = table["time", args.f, "quality"]
         result_str = processing(table,f_path,make_plots=args.p)
         lock.acquire()
-        with open(args.of,'a') as out_file:
+        try:
+            os.makedirs("output_log_xrp") # make directory plot if it doesn't exist
+        except FileExistsError:
+            pass
+        with open(os.path.join("output_log/",args.of),'a') as out_file:
             out_file.write(result_str+'\n')
         lock.release()
     except (KeyboardInterrupt, SystemExit):
@@ -84,8 +92,12 @@ def single_file(f_path):
     try:
         f = os.path.basename(f_path)
         print(f_path)
-        table = import_XRPlightcurve(f_path,sector=sector_test,clip=args.c)[0]
-        table = table["time", args.f, "quality"]
+        if (os.path.split(args.fits_file[0])[1].startswith('kplr')) or (os.path.split(args.fits_file[0])[1].startswith("hlsp_tess") and os.path.split(args.fits_file[0])[1].endswith("fits")): #or os.path.split(args.fits_file[0])[1].startswith("tess") and os.path.split(args.fits_file[0])[1].endswith("fits")):
+            table = import_lightcurve(args.fits_file[0])
+            t, flux, quality, real = clean_data(table)
+        else:
+            table = import_XRPlightcurve(f_path,sector=sector_test,clip=args.c)[0]
+            table = table["time", args.f, "quality"]
         result_str = processing(table,f_path,make_plots=args.p)
         #lock.acquire()
         #with open(args.of,'a') as out_file:
@@ -106,9 +118,9 @@ if __name__ == '__main__':
 
     for path in paths:
         if not os.path.isdir(path):
-            result_str = single_file(path)
-            print(type(result_str))
-            #print(path,'not a directory, skipping.',file=sys.stderr)
+            #result_str = single_file(path)
+  
+            print(path,'not a directory, skipping.',file=sys.stderr)
             continue
         
         # if we are in the lowest subdirectory, perform glob this way.
