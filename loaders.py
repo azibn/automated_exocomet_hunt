@@ -3,24 +3,22 @@ from multiprocessing import Pool
 import numpy as np
 import pickle
 import pandas as pd
-import os 
+import os
 import data
 
 
 class LightCurveCollection:
     def __init__(
-            self,
-            sec: list,
-            cam: list,
-            files: list,
-            factor: int = 10,
+        self,
+        sec: list,
+        cam: list,
+        files: list,
+        factor: int = 10,
     ):
         self.sector = sec
         self.camera = cam
         self.files = files
-        self.ref = pd.DataFrame(
-            data={"sector": sec, "camera": cam, "file": files}
-            )
+        self.ref = pd.DataFrame(data={"sector": sec, "camera": cam, "file": files})
         self.factor = factor
         self.normalize = True
         self.useCpus = 1
@@ -38,7 +36,7 @@ class LightCurveCollection:
             "Sector": self.sector,
             "Camera": self.camera,
             "Count": len(self.files),
-            "Loaded": self.loaded
+            "Loaded": self.loaded,
         }
         return self.summary
 
@@ -50,16 +48,16 @@ class LightCurveCollection:
         cams = np.unique(self.camera)
         for sector in sectors:
             for cam in cams:
-                subref = self.ref[(self.ref.sector == sector)
-                                  & (self.ref.camera == cam)]
+                subref = self.ref[
+                    (self.ref.sector == sector) & (self.ref.camera == cam)
+                ]
                 if len(subref) == 0:
                     pass
                 else:
                     f0 = subref.file.values[0]
                     lc0 = load_lc(f0)
-                    sc_mad[f'{sector}-{cam}'] = mad_table.loc[
-                        :len(lc0)-1,
-                        f"{sector}-{cam}"
+                    sc_mad[f"{sector}-{cam}"] = mad_table.loc[
+                        : len(lc0) - 1, f"{sector}-{cam}"
                     ]
         self.sc_mad = sc_mad
         return sc_mad
@@ -71,16 +69,16 @@ class LightCurveCollection:
         cams = np.unique(self.camera)
         for sector in sectors:
             for cam in cams:
-                subref = self.ref[(self.ref.sector == sector)
-                                  & (self.ref.camera == cam)]
+                subref = self.ref[
+                    (self.ref.sector == sector) & (self.ref.camera == cam)
+                ]
                 if len(subref) == 0:
                     pass
                 else:
-                    sc = f'{sector}-{cam}'
-                    cut = (np.mean(self.sc_mad[sc])
-                           + (self.factor
-                              * np.std(self.sc_mad[sc]))
-                           )
+                    sc = f"{sector}-{cam}"
+                    cut = np.mean(self.sc_mad[sc]) + (
+                        self.factor * np.std(self.sc_mad[sc])
+                    )
                     self.cutmask[sc] = self.sc_mad[sc] < cut
         return self.cutmask
 
@@ -92,17 +90,18 @@ class LightCurveCollection:
         cams = np.unique(self.camera)
         for sector in sectors:
             for cam in cams:
-                subref = self.ref[(self.ref.sector == sector)
-                                  & (self.ref.camera == cam)]
+                subref = self.ref[
+                    (self.ref.sector == sector) & (self.ref.camera == cam)
+                ]
                 if len(subref) == 0:
                     pass
                 else:
-                    sc = f'{sector}-{cam}'
+                    sc = f"{sector}-{cam}"
                     # create the scaling array, log scaled in this instance,
                     # inverted so large MAD cadences are suppressed
                     sc_mad_loginv = -np.log(self.sc_mad[sc])
                     self.mad_scaler[sc] = np.array(
-                        (sc_mad_loginv-sc_mad_loginv.min())
+                        (sc_mad_loginv - sc_mad_loginv.min())
                         / (sc_mad_loginv.max() - sc_mad_loginv.min())
                     )
 
@@ -110,7 +109,7 @@ class LightCurveCollection:
 
     def load_raw_lc(self, miniref):
         """Load a light curve without our masks or weights.
-        
+
         The LC will still be normalized and have non-zero quality flags removed.
         args:
             miniref - any python object with 'file', 'sector', and 'camera' attributes
@@ -123,9 +122,9 @@ class LightCurveCollection:
 
         lc = lc.remove_nans()
         if (lc.flux < 0).any():
-            lc.flux = lc.flux+min(lc.flux)
+            lc.flux = lc.flux + min(lc.flux)
 
-        nfluxes = np.array(lc.flux/abs(np.nanmedian(lc.flux)))
+        nfluxes = np.array(lc.flux / abs(np.nanmedian(lc.flux)))
         lc.flux = nfluxes
 
         assert len(lc) > 100, f"Check TIC {lc_copy.targetid}"
@@ -153,11 +152,11 @@ class LightCurveCollection:
 
         # shift all flux positive in case of bad bkgd subtraction
         if (lc.flux < 0).any():
-            lc.flux = lc.flux+2*abs(min(lc.flux))  # iffy
+            lc.flux = lc.flux + 2 * abs(min(lc.flux))  # iffy
         if self.normalize:
-            nfluxes = np.array(lc.flux/abs(np.nanmedian(lc.flux)))
+            nfluxes = np.array(lc.flux / abs(np.nanmedian(lc.flux)))
             lc.flux = nfluxes
-        
+
         assert len(lc) > 100, f"Check TIC {lc.targetid}"
 
         return lc
@@ -171,12 +170,12 @@ class LightCurveCollection:
         lc = load_lc(f)
         # shift all flux positive in case of bad bkgd subtraction
         if (lc.flux < 0).any():
-            lc.flux = lc.flux+min(lc.flux)
+            lc.flux = lc.flux + min(lc.flux)
 
-        nfluxes = np.array(lc.flux/np.nanmedian(lc.flux))
+        nfluxes = np.array(lc.flux / np.nanmedian(lc.flux))
 
         sc = f"{sec}-{cam}"
-        nfluxes = (nfluxes-1)*self.mad_scaler[sc]+1  # scaled fluxes
+        nfluxes = (nfluxes - 1) * self.mad_scaler[sc] + 1  # scaled fluxes
         lc.flux = nfluxes
 
         lc = lc[lc.quality == 0].remove_nans()
@@ -186,16 +185,18 @@ class LightCurveCollection:
 
         return lc
 
-    def load_all_lcs(self, method: str = 'cut'):
-        """Load all light curves specified in self.files
-        """
+    def load_all_lcs(self, method: str = "cut"):
+        """Load all light curves specified in self.files"""
         if self.useCpus == 1:
             if method == "cut":
-                self.lcs = [self.load_cut_lc(self.ref.iloc[i])
-                            for i in range(len(self.ref))]
+                self.lcs = [
+                    self.load_cut_lc(self.ref.iloc[i]) for i in range(len(self.ref))
+                ]
             elif method == "log_w":
-                self.lcs = [self.load_weighted_lc(self.ref.iloc[i])
-                            for i in range(len(self.ref))]
+                self.lcs = [
+                    self.load_weighted_lc(self.ref.iloc[i])
+                    for i in range(len(self.ref))
+                ]
         else:
             if method == "cut":
                 with Pool(self.useCpus) as p:
@@ -222,7 +223,7 @@ def load_lc(fp, fluxtype="PDC", mask=False):
         lc (lightkurve.lightcurve.LightCurve) - a LightCurve object
     """
 
-    with open(fp, 'rb') as file:
+    with open(fp, "rb") as file:
         lc_list = pickle.load(file)
 
     fluxes = {"raw": lc_list[7], "corr": lc_list[8], "PDC": lc_list[9]}
@@ -231,8 +232,10 @@ def load_lc(fp, fluxtype="PDC", mask=False):
         flux = fluxes[fluxtype]
 
     except KeyError:
-        print("""
-        The flux type must be 'raw', 'corr', or 'PDC'. Defaulting to 'PDC'.""")
+        print(
+            """
+        The flux type must be 'raw', 'corr', or 'PDC'. Defaulting to 'PDC'."""
+        )
         flux = fluxes["PDC"]
 
     finally:
@@ -248,13 +251,19 @@ def load_lc(fp, fluxtype="PDC", mask=False):
             quality = quality[mask]  # just 0's if masked
 
         # for meta information
-        fluxes.update(
-            {"TESS Magnitude": lc_list[3], "filename": fp.split("/")[-1]})
+        fluxes.update({"TESS Magnitude": lc_list[3], "filename": fp.split("/")[-1]})
         lc = lk.lightcurve.TessLightCurve(
-            time=time, flux=flux, flux_err=flux_err, targetid=lc_list[0],
-            quality=quality, camera=lc_list[4], ccd=lc_list[5],
-            ra=lc_list[1], dec=lc_list[2], label=f"TIC {lc_list[0]}",
-            meta=fluxes
+            time=time,
+            flux=flux,
+            flux_err=flux_err,
+            targetid=lc_list[0],
+            quality=quality,
+            camera=lc_list[4],
+            ccd=lc_list[5],
+            ra=lc_list[1],
+            dec=lc_list[2],
+            label=f"TIC {lc_list[0]}",
+            meta=fluxes,
         )
 
     return lc
@@ -265,19 +274,20 @@ lc_collection = LightCurveCollection
 
 
 def load_masked_lc(fp):
-    """ Loads a light curve with bad quality data masked
+    """Loads a light curve with bad quality data masked
     non-zero quality flags from eleanor masked as well as
     cadences determined to have signficant systematics
     """
     lc = load_lc(fp)
-    comb_mask = [(lc.quality[i] == 0) and (threshold_mask[i] == 0)
-                 for i in range(len(lc))]
+    comb_mask = [
+        (lc.quality[i] == 0) and (threshold_mask[i] == 0) for i in range(len(lc))
+    ]
     lc = lc[comb_mask]
     return lc
 
 
 def load_masked_lc_wrapper(fps, sec, cam):
-    """ A wrapper for the load_masked_lc method
+    """A wrapper for the load_masked_lc method
     Created to avoid loading the threshold_mask file for each
     lightcurve import
     """
@@ -308,14 +318,16 @@ def load_lc_arr(fp, fluxtype="PDC", mask=False):
         quality (array)
         lc_list[0] (int)
     """
-    with open(fp, 'rb') as file:
+    with open(fp, "rb") as file:
         lc_list = pickle.load(file)
     fluxes = {"raw": lc_list[7], "corr": lc_list[8], "PDC": lc_list[9]}
     try:
         flux = fluxes[fluxtype]
     except KeyError:
-        print("""
-        The flux type must be 'raw', 'corr', or 'PDC'. Defaulting to 'PDC'.""")
+        print(
+            """
+        The flux type must be 'raw', 'corr', or 'PDC'. Defaulting to 'PDC'."""
+        )
         flux = fluxes["PDC"]
     finally:
         time = lc_list[6]
@@ -331,24 +343,24 @@ def load_lc_arr(fp, fluxtype="PDC", mask=False):
     return (time, flux, quality, lc_list[0])
 
 
-def make_subset(data_dir,
-                sector=1,
-                camera=1,
-                ccd=1,
-                mag_min=0,
-                mag_max=15,
-                save_dir="/home/dgiles1/data/"
-                ):
-    ref = pd.read_csv(data_dir+f"sector{sector}lookup.csv")
+def make_subset(
+    data_dir,
+    sector=1,
+    camera=1,
+    ccd=1,
+    mag_min=0,
+    mag_max=15,
+    save_dir="/home/dgiles1/data/",
+):
+    ref = pd.read_csv(data_dir + f"sector{sector}lookup.csv")
     lc_set = ref[(ref.Camera == camera) & (ref.CCD == ccd)]
-    lc_set = lc_set[(lc_set.Magnitude < mag_max) &
-                    (lc_set.Magnitude > mag_min)]
+    lc_set = lc_set[(lc_set.Magnitude < mag_max) & (lc_set.Magnitude > mag_min)]
 
     # =========================================
     # WRITE A FILE LIST, SAVE LOCALLY
     # =========================================
-    fp = f'./data/{sector}_{camera}_{ccd}-{mag_min}_{mag_max}.txt'
-    with open(fp, 'w') as file:
+    fp = f"./data/{sector}_{camera}_{ccd}-{mag_min}_{mag_max}.txt"
+    with open(fp, "w") as file:
 
         for filename in lc_set.Filename:
             file.write(f"gs://tess-goddard-lcs/{filename} \n")
@@ -356,27 +368,30 @@ def make_subset(data_dir,
         gs_cmd = f"gsutil -m cp -I {save_dir}"
         os.system(f"{cat_cmd}|{gs_cmd}")
         if __name__ != "__main__":
-            print(f"""
+            print(
+                f"""
                   Run the following in the terminal to download data locally:
                   {cat_cmd} | {gs_cmd}
-                  """)
+                  """
+            )
 
     return lc_set
 
 
 def make_scd_subset(
-        data_dir,
-        sector=1,
-        camera=1,
-        ccd=1,
-        mag_min=0,
-        mag_max=15,
-        save_dir="/home/dgiles1/data/"
+    data_dir,
+    sector=1,
+    camera=1,
+    ccd=1,
+    mag_min=0,
+    mag_max=15,
+    save_dir="/home/dgiles1/data/",
 ):
     try:
-        ref = pd.read_csv(data_dir+f"sector{sector}lookup.csv")
+        ref = pd.read_csv(data_dir + f"sector{sector}lookup.csv")
     except FileNotFoundError:
-        print(f"""
+        print(
+            f"""
         FileNotFoundError: the file {data_dir}sector{sector}lookup.csv
         cannot be found. Make sure the Google Bucket is properly mounted.
 
@@ -386,10 +401,10 @@ def make_scd_subset(
         and don't forget to provide the --data-path argument
             when rerunning this script:
         python lc_mad --data-path /home/[USER]/[MOUNT POINT]/
-        """)
+        """
+        )
     lc_set = ref[(ref.Camera == camera) & (ref.CCD == ccd)]
-    lc_set = lc_set[(lc_set.Magnitude < mag_max) &
-                    (lc_set.Magnitude > mag_min)]
+    lc_set = lc_set[(lc_set.Magnitude < mag_max) & (lc_set.Magnitude > mag_min)]
 
     # =========================================
     # WRITE A FILE LIST, SAVE LOCALLY
@@ -397,20 +412,17 @@ def make_scd_subset(
     try:
         # check if files are downloaded
         # TODO: replace with a more straightforward "does file exist?" test
-        load_lc(save_dir+lc_set.iloc[-1].Filename, mask=False)
+        load_lc(save_dir + lc_set.iloc[-1].Filename, mask=False)
 
     except FileNotFoundError:
-        lines = [
-            f"gs://tess-goddard-lcs/{filename}\n"
-            for filename in lc_set.Filename
-            ]
-        files = [file.split('/')[-1] for file in lc_set.Filename]
-        fl1 = f'/home/dgiles1/data/{sector}_{camera}_{ccd}'
-        fl2 = f'{int(mag_min)}_{int(mag_max)}'
-        filelist = f'{fl1}-{fl2}.txt'
+        lines = [f"gs://tess-goddard-lcs/{filename}\n" for filename in lc_set.Filename]
+        files = [file.split("/")[-1] for file in lc_set.Filename]
+        fl1 = f"/home/dgiles1/data/{sector}_{camera}_{ccd}"
+        fl2 = f"{int(mag_min)}_{int(mag_max)}"
+        filelist = f"{fl1}-{fl2}.txt"
         files_done = os.listdir(save_dir)
         done = [elem in files_done for elem in files]
-        with open(filelist, 'w') as file:
+        with open(filelist, "w") as file:
             file.writelines(lines[not done])
 
         if __name__ == "__main__":
@@ -425,34 +437,22 @@ def make_scd_subset(
     return lc_set
 
 
-def load_scd_subset(
-    sector,
-    camera,
-    ccd,
-    mag_min,
-    mag_max,
-    data_path,
-    save_path
-):
+def load_scd_subset(sector, camera, ccd, mag_min, mag_max, data_path, save_path):
 
-    lc_set = make_scd_subset(data_path, sector, camera,
-                             ccd, mag_min, mag_max, save_path)
-    lc_set_filenames = [save_path+f.split('/')[-1] for f in lc_set.Filename]
+    lc_set = make_scd_subset(
+        data_path, sector, camera, ccd, mag_min, mag_max, save_path
+    )
+    lc_set_filenames = [save_path + f.split("/")[-1] for f in lc_set.Filename]
     return lc_set_filenames
 
 
-def make_tmc_subset(
-        data_dir,
-        sector=1,
-        camera=1,
-        save_dir="/home/dgiles1/data/"
-):
-    """ Create the subset and download the appropriate data
-    """
+def make_tmc_subset(data_dir, sector=1, camera=1, save_dir="/home/dgiles1/data/"):
+    """Create the subset and download the appropriate data"""
     try:
-        ref = pd.read_csv(data_dir+f"sector{sector}lookup.csv")
+        ref = pd.read_csv(data_dir + f"sector{sector}lookup.csv")
     except FileNotFoundError:
-        print(f"""
+        print(
+            f"""
         FileNotFoundError: the file {data_dir}sector{sector}lookup.csv
         cannot be found. Make sure the Google Bucket is properly mounted.
 
@@ -462,7 +462,8 @@ def make_tmc_subset(
         and don't forget to provide the --data-path argument
             when rerunning this script:
         python lc_mad --data-path /home/[USER]/[MOUNT POINT]/
-        """)
+        """
+        )
     tmcl = ["2_min_cadence" in fn for fn in ref.Filename]
     lc_set = ref[(ref.Camera == camera) & tmcl]
 
@@ -472,18 +473,15 @@ def make_tmc_subset(
     try:
         # check if files are downloaded
         # TODO: replace with a more straightforward "does file exist?" test
-        load_lc(save_dir+lc_set.iloc[-1].Filename, mask=False)
+        load_lc(save_dir + lc_set.iloc[-1].Filename, mask=False)
 
     except FileNotFoundError:
-        lines = [
-            f"gs://tess-goddard-lcs/{filename}\n"
-            for filename in lc_set.Filename
-            ]
-        files = [file.split('/')[-1] for file in lc_set.Filename]
-        filelist = f'/home/dgiles1/data/TMC{sector}-{camera}.txt'
+        lines = [f"gs://tess-goddard-lcs/{filename}\n" for filename in lc_set.Filename]
+        files = [file.split("/")[-1] for file in lc_set.Filename]
+        filelist = f"/home/dgiles1/data/TMC{sector}-{camera}.txt"
         files_done = os.listdir(save_dir)
         done = [elem in files_done for elem in files]
-        with open(filelist, 'w') as file:
+        with open(filelist, "w") as file:
             file.writelines(lines[not done])
 
         if __name__ == "__main__":
@@ -499,18 +497,13 @@ def make_tmc_subset(
 
 
 def load_tmc_subset(sector, camera, data_path, save_path):
-    """Load a set of filenames as a list, downloading the files if necessary.
-    """
+    """Load a set of filenames as a list, downloading the files if necessary."""
     lc_set = make_tmc_subset(data_path, sector, camera, save_path)
-    lc_set_filenames = [save_path+f.split('/')[-1] for f in lc_set.Filename]
+    lc_set_filenames = [save_path + f.split("/")[-1] for f in lc_set.Filename]
     return lc_set_filenames
 
 
-def load_subset(data_path,
-                lc_set_filenames,
-                mask=False,
-                simple=False,
-                ncpus=1):
+def load_subset(data_path, lc_set_filenames, mask=False, simple=False, ncpus=1):
     """Loads light curves matching given criteria from a single SCD combo.
     Args:
         ref_csv (pandas.DataFrame) - sector reference from csv
@@ -534,7 +527,8 @@ def load_subset(data_path,
     # for 10k or 100k and more CPUs.
     if ncpus != 1:
         from multiprocessing import Pool
-        paths = [data_path+f for f in lc_set_filenames]
+
+        paths = [data_path + f for f in lc_set_filenames]
         if ncpus == -1:
             with Pool() as p:
                 lcs = p.map(load_lc_arr, paths)
@@ -545,11 +539,10 @@ def load_subset(data_path,
         lcs = []
         for f in lc_set_filenames:
             if simple:
-                time, flux, quality, lc_list = load_lc_arr(
-                    data_path+f, mask=mask)
+                time, flux, quality, lc_list = load_lc_arr(data_path + f, mask=mask)
                 lcs.append([time, flux, lc_list])
             else:
-                lcs.append(load_lc(data_path+f, mask=False))
+                lcs.append(load_lc(data_path + f, mask=False))
 
     return lcs
 
@@ -563,15 +556,14 @@ def load_ref(sector, data_dir="~/data/"):
 
     try:
         # check if the lookup file for sector one exists
-        ref = pd.read_csv(data_dir+f"sector{sector}lookup.csv")
+        ref = pd.read_csv(data_dir + f"sector{sector}lookup.csv")
     except FileNotFoundError:
         # If not, try to mount it.
         # ! only works on a VM
         import os
-        os.system(
-            f"gcsfuse --implicit-dirs tess-goddard-lcs {data_dir}"
-        )
-        ref = pd.read_csv(data_dir+f"sector{sector}lookup.csv")
+
+        os.system(f"gcsfuse --implicit-dirs tess-goddard-lcs {data_dir}")
+        ref = pd.read_csv(data_dir + f"sector{sector}lookup.csv")
     return ref
 
 
@@ -589,23 +581,36 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--sector", type=int, default="1", help="Sector number",
+        "--sector",
+        type=int,
+        default="1",
+        help="Sector number",
     )
 
     parser.add_argument(
-        "--camera", type=int, default="1", help="Camera number",
+        "--camera",
+        type=int,
+        default="1",
+        help="Camera number",
     )
 
     parser.add_argument(
-        "--ccd", type=int, default="1", help="CCD detector number",
+        "--ccd",
+        type=int,
+        default="1",
+        help="CCD detector number",
     )
     parser.add_argument(
-        "--mag-min", type=float, default="1",
+        "--mag-min",
+        type=float,
+        default="1",
         help="magnitude minimum (lowest value)",
     )
 
     parser.add_argument(
-        "--mag-max", type=float, default="15",
+        "--mag-max",
+        type=float,
+        default="15",
         help="magnitude maximum (highest value)",
     )
 
@@ -625,11 +630,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    make_subset(args.data_path,
-                args.sector,
-                args.camera,
-                args.ccd,
-                args.mag_min,
-                args.mag_max,
-                args.save_path
-                )
+    make_subset(
+        args.data_path,
+        args.sector,
+        args.camera,
+        args.ccd,
+        args.mag_min,
+        args.mag_max,
+        args.save_path,
+    )
