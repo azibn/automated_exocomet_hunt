@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 # import os; os.environ['OMP_NUM_THREADS']='1'
-from socket import AF_X25
-
-from torch import _log_softmax_backward_data, masked_fill
 from analysis_tools_cython import *
 from functools import reduce
 from astropy.table import Table, unique
@@ -31,7 +28,8 @@ args = parser.parse_args()
 # If XRP TESS lightcurve, apply MAD. If Kepler lightcurve, skip to timestep
 if (os.path.split(args.fits_file[0])[1].startswith("kplr")) or (
     os.path.split(args.fits_file[0])[1].startswith("hlsp_tess")
-    and os.path.split(args.fits_file[0])[1].endswith("fits")
+    and os.path.split(args.fits_file[0])[1].endswith("fits") or 
+    "qlp" in os.path.split(args.fits_file[0])[1]
 ):
     # or os.path.split(args.fits_file[0])[1].startswith("tess")
     # and os.path.split(args.fits_file[0])[1].endswith("fits")
@@ -44,7 +42,6 @@ elif "tasoc" in os.path.split(args.fits_file[0])[1]:
     table = import_tasoclightcurve(args.fits_file[0])
     plt.plot(table["TIME"], table["FLUX_CORR"])
     t, flux, quality, real = clean_data(table)
-
 
 elif os.path.split(args.fits_file[0])[1].endswith(".csv"):
     table = import_eleanor(args.fits_file[0], 6, 1, 4, drop_bad_points=True)
@@ -152,7 +149,7 @@ if (
     print("Quality flags:", qual_flags)
 
 # Classify events
-asym, _, _ = calc_shape(m2, n2, t, flux)
+asym, _, _ = calc_shape(m2, n2, t, final_flux)
 print(classify(m2, n2, real, asym))
 
 # Skip plotting if no graphical output set
@@ -212,6 +209,8 @@ im = axarr[7].imshow(
     cmap="rainbow",
 )
 axarr[7].title.set_text("An image of the final lightcurve (second Lomb Scargle)")
+axarr[7].set_xlabel("Days in BTJD")
+axarr[7].set_ylabel("Transit width in days")
 
 fig1.colorbar(im, cax=cax)
 fig1.tight_layout()
