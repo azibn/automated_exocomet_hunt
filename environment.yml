@@ -1,0 +1,29 @@
+name: auto_exo
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.7
+  - astropy
+  - astroquery
+  - black
+  - bokeh==2.2.3
+  - celerite
+  - cython
+  - jupyterlab
+  - matplotlib
+  - numba
+  - numexpr
+  - pandas
+  - scikit-learn
+  - scipy
+  - seaborn
+  - tk
+  - tqdm
+  - pickle5
+  - pip
+  - pip:
+    - lightkurve>=2
+    - eleanor
+    - kplr
+    - markupsafe==2.0.1

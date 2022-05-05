@@ -1,41 +1,57 @@
-Code for automated detection of comets in light curve files.
+Code for automated detection of exocomets in light curves.
 
-### Installation (Edited)
+### Installation
 
-This project was developed with a Conda environment (latest tested in Python 3.8.1). Install by running in the terminal:
+Latest tested in Python 3.7
 	
 	git clone https://github.com/azibn/automated_exocomet_hunt
-	conda create -n <Environment Name> --file requirements.txt
-	conda activate <Environment Name>
+	conda env create -f environment.yml
+	conda activate auto_exo
+
+Alternatively, you can try this:
+
+	git clone https://github.com/azibn/automated_exocomet_hunt
+	conda create -n <environment name> python jupyter jupyterlab scipy astropy numpy pandas pip cython matplotlib
+	conda activate <environment name>
+	pip install lightkurve kplr eleanor
 	./make
-
-
-Cython may show some deprecated warnings upon install. Fixes to these coming soon.
-
-**Note**: M1 Mac machines may face issues with Scipy install when using pip. Recommended to use a Conda enviornment and install Scipy with `conda install scipy`. 
-
-The original installation method is below, if the above does not work.
-
-----
-
-Requires Python 3 (tested in 3.5). Needs Numpy, Scipy, Astropy and Matplotlib libraries, and a working Cython install. 
-
-Install by running:
-
-    git clone https://github.com/greghope667/comet_project
-    cd comet_project
-    ./make
+ 
+Different package versions may cause conflicts, so it is recommended to run this code using the virtual environment setup placed above. 
 
 ### Usage
 
-These scripts runs on light curve files, which can be obtained from [MAST](https://archive.stsci.edu/kepler/).
+These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves
+
+Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/). 
+
+TESS SPOC lightcurves can also be obtained from [MAST](https://archive.stsci.edu/missions/tess/tid/).
 
 `single_analysis.py` runs on a single file, for example:
+ 
+ TESS:
+
+    python single_analysis_xrp.py tesslcs_sector_6_104_2_min_cadence_targets_tesslc_270577175.pkl
+ 
+ Kepler:
 
     wget https://archive.stsci.edu/missions/kepler/lightcurves/0035/003542116/kplr003542116-2012088054726_llc.fits
-    ./single_analysis.py kplr003542116-2012088054726_llc.fits
+    python single_analysis.py kplr003542116-2012088054726_llc.fits
+
 
 `batch_analyse.py` runs on directories of files, outputting results to a text file with one row per file. `archive_analyse.sh` is a bash script for processing compressed archives of light curve files, extracting them temporarily to a directory.  Both these scripts have multiple options (number of threads, output file location ...), run with help flag (`-h`) for more details.
+
+### Code Style
+Code style in `.py` scripts is formatted with [Black Python Formatter](https://black.readthedocs.io/en/stable/index.html) and must be standardised with Black before pushing to the repository. Black formatting checks run as part of the Git workflow. It is responsibility of the user to format their code before pushing to repo.
+
+To format your files, enter shell and run:
+
+`black scripts/<name_of_script>.py`
+
+or
+
+`black scripts/*`
+
+to format contents of the entire directory.
 
 ### Output
 
@@ -45,8 +61,3 @@ https://github.com/greghope667/comet_project_results contains a description of t
 * all_snr_gt_5_ok.txt is the final list of 7,217 transits
 
 
-### Other files
-
-* The jupyer notebook figs.ipynb contains code to explore individual light curves, and makes most of the plots in the paper.
-* The text file artefact_list.txt contains a list of artefacts found among candidates.
-* dr2.xml and young-cl.xml contain votables of stars from Gaia used in the HR diagrams.
