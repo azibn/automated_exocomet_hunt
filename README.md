@@ -45,7 +45,7 @@ Code style in `.py` scripts is formatted with [Black Python Formatter](https://b
 
 To format your files, enter shell and run:
 
-`black scripts/<name_of_script>.py`
+`black <name_of_script>.py`
 
 or
 
