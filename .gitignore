@@ -42,5 +42,11 @@ kplr003542116-2012088054726_llc.fits
 notebooks/Untitled.ipynb
 old_kepler_files/
 tess2018206190142-s0001-s0006-0000000270577175-00196_dvt.fits
-
+7175/
+figs.ipynb
+figs/
+figs_tess/
+sky_positions.py
+test.csv
+tic_ra_dec.py
 # data
