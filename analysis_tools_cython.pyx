@@ -1,12 +1,19 @@
+#cython: language_level=3
+import pandas as pd
 from astropy.io import fits
 from astropy.table import Table
+from astropy.stats import sigma_clip, sigma_clipped_stats
 from scipy.optimize import curve_fit
-from astropy.stats import LombScargle
+from astropy.timeseries import LombScargle
 import numpy as np
 cimport numpy as np
 import math
 import sys,os
 import kplr
+import data
+import warnings
+warnings.filterwarnings("ignore")
+from matplotlib import pyplot as plt
 
 
 def download_lightcurve(file, path='.'):
@@ -32,8 +39,177 @@ def download_lightcurve(file, path='.'):
     _ = lcs[i].open() # force download
     return lcs[i].filename
 
+def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],return_type='astropy'):
+    """
+    file_path: path to file
+    sector = lightcurve sector
+    drop_bad_points: Removing outlier points. Default False
+    mad_plots: plots MAD comparisons
+    q: lightcurve quality, default 0 (excludes all non-zero quality)
+    clip: Sigma to be clipped by (default 4)
+    return_type: Default 'astropy'. Pandas DataFrame also available with 'pandas' 
 
-def import_lightcurve(file_path, drop_bad_points=False,
+    returns
+        - table: Astropy table of lightcurve
+        - ok_flags = [14]: the MAD excluded data.
+        - info: additional information about the lightcurve (TIC ID, RA, DEC, TESS magnitude, Camera, Chip)
+    """
+    lc = pd.read_pickle(file_path)
+
+    for i in range(len(lc)):
+        if isinstance(lc[i], np.ndarray):
+            lc[i] = pd.Series(lc[i])
+    for_df = lc[6:]  # TIC ID, RA, DEC, TESS magnitude, Camera, Chip
+    columns = [
+        "time",
+        "raw flux",
+        "corrected flux",
+        "PCA flux",
+        "flux error",
+        "quality",
+    ]
+    df = pd.DataFrame(data=for_df).T 
+    df.columns = columns
+
+    table = Table.from_pandas(df)
+
+    # loading Ethan Kruse bad times
+    bad_times = data.load_bad_times()
+    bad_times = bad_times - 2457000
+    
+    # loading MAD 
+    mad_df = data.load_mad()
+    sec = sector
+    camera = lc[4]
+    mad_arr = mad_df.loc[:len(table)-1,f"{sec}-{camera}"]
+    sig_clip = sigma_clip(mad_arr,sigma=clip,masked=True)
+
+    # applied MAD cut to keep points within selected sigma
+    mad_cut = mad_arr.values < ~sig_clip.mask 
+    
+    # return indices of values above MAD threshold
+    matched_ind = np.where(~mad_cut) # indices of MAD's above threshold
+
+    # Change quality of matched indices to 2**(17-1) (or add 2**(17-1) if existing flag already present)
+    table['quality'][matched_ind] += 2**(17-1)
+    table['quality'] = table['quality'].astype(np.int32) # int32 set so it can work with `get_quality_indices` function
+
+    # Ethan Kruse bad time mask
+    mask = np.ones_like(table['time'], dtype=bool)
+    for i in bad_times:
+        newchunk = (table['time']<i[0])|(table['time']>i[1])
+        mask = mask & newchunk
+        
+    # Apply Kruse bad mask to table
+    table = table[mask]
+
+    if drop_bad_points:
+        bad_points = []
+        q_ind = get_quality_indices(table['quality'])
+    
+        for j,q in enumerate(q_ind): # j=index, q=quality
+            if j+1 not in ok_flags:
+                bad_points += q.tolist()
+        table.remove_rows(bad_points)
+
+    
+    # Delete rows containing NaN values. 
+    nan_rows = [ i for i in range(len(table)) if
+            math.isnan(table[i][2]) or math.isnan(table[i][0]) ] 
+    table.remove_rows(nan_rows)
+
+    # Smooth data by deleting overly 'spikey' points.
+    spikes = [ i for i in range(1,len(table)-1) if \
+            abs(table[i][1] - 0.5*(table[i-1][1]+table[i+1][1])) \
+            > 3*abs(table[i+1][1] - table[i-1][1])]
+
+    for i in spikes:
+        table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
+    #print(len(table),"length at end")
+
+    if return_type == 'pandas':
+
+        return table.to_pandas(), lc[0:6]
+    else:
+
+        return table, lc[0:6]
+
+
+def import_eleanor(file_path,sector,camera,clip,drop_bad_points=True,ok_flags=[],return_type='astropy'):
+    df = pd.read_csv(file_path)
+    columns = [
+        "time", 
+        "corrected flux",
+        "quality"
+    ]
+    df = pd.DataFrame(data=df)
+    df.columns = columns
+
+    table = Table.from_pandas(df)
+
+    # loading Ethan Kruse bad times
+    bad_times = data.load_bad_times()
+    bad_times = bad_times - 2457000
+    
+    # loading MAD 
+    mad_df = data.load_mad()
+    sec = sector
+    camera = camera
+    mad_arr = mad_df.loc[:len(table)-1,f"{sec}-{camera}"]
+    sig_clip = sigma_clip(mad_arr,sigma=clip,masked=True)
+
+    # applied MAD cut to keep points within selected sigma
+    mad_cut = mad_arr.values < ~sig_clip.mask 
+    
+    # return indices of values above MAD threshold
+    matched_ind = np.where(~mad_cut) # indices of MAD's above threshold
+
+    # Change quality of matched indices to 2**(17-1) (or add 2**(17-1) if existing flag already present)
+    table['quality'][matched_ind] += 2**(17-1)
+    table['quality'] = table['quality'].astype(np.int32) # int32 set so it can work with `get_quality_indices` function
+
+    # Ethan Kruse bad time mask
+    mask = np.ones_like(table['time'], dtype=bool)
+    for i in bad_times:
+        newchunk = (table['time']<i[0])|(table['time']>i[1])
+        mask = mask & newchunk
+        
+    # Apply Kruse bad mask to table
+    table = table[mask]
+
+    if drop_bad_points:
+        bad_points = []
+        q_ind = get_quality_indices(table['quality'])
+    
+        for j,q in enumerate(q_ind): # j=index, q=quality
+            if j+1 not in ok_flags:
+                bad_points += q.tolist()
+        table.remove_rows(bad_points)
+
+    
+    # Delete rows containing NaN values. 
+    nan_rows = [ i for i in range(len(table)) if
+            math.isnan(table[i][2]) or math.isnan(table[i][0]) ] 
+    table.remove_rows(nan_rows)
+
+    # Smooth data by deleting overly 'spikey' points.
+    spikes = [ i for i in range(1,len(table)-1) if \
+            abs(table[i][1] - 0.5*(table[i-1][1]+table[i+1][1])) \
+            > 3*abs(table[i+1][1] - table[i-1][1])]
+
+    for i in spikes:
+        table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
+    #print(len(table),"length at end")
+
+    if return_type == 'pandas':
+
+        return table.to_pandas()
+    else:
+
+        return table
+
+
+def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
                       ok_flags=[5]):
     """Returns (N by 2) table, columns are (time, flux).
 
@@ -48,43 +224,114 @@ def import_lightcurve(file_path, drop_bad_points=False,
         return
 
     scidata = hdulist[1].data
-    table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
-
+    try:
+        if 'kplr' in file_path:
+            table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+        elif 'tasoc' in file_path:
+            table = Table(scidata)['TIME','FLUX_CORR','QUALITY']
+        else:
+        #elif 'tess' in file_path:
+            #try:
+            table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
+            #except:
+            #    time = scidata.TIME
+            #    flux = scidata.PDCSAP_FLUX
+            #    quality = scidata.QUALITY
+    except:
+        table = Table(scidata)['TIME','SAP_FLUX','QUALITY']
+    
     if drop_bad_points:
         bad_points = []
-        q_ind = get_quality_indices(table['SAP_QUALITY'])
-        for j,q in enumerate(q_ind):
+        if 'kplr' in file_path:
+            q_ind = get_quality_indices(table['SAP_QUALITY'])
+        elif 'tess' in file_path:
+            q_ind = get_quality_indices(table['QUALITY'])
+        
+        for j,q in enumerate(q_ind): # j=index, q=quality
             if j+1 not in ok_flags:
-                bad_points += q.tolist()
+                bad_points += q.tolist() # adds bad_points by value of q (the quality indices) and converts to list
+    
 
         # bad_points = [i for i in range(len(table)) if table[i][2]>0]
         table.remove_rows(bad_points)
 
-    # Delete rows containing NaN values.
+
+    # Delete rows containing NaN values. 
+    ## if flux or time columns are NaN's, remove them.
     nan_rows = [ i for i in range(len(table)) if
             math.isnan(table[i][1]) or math.isnan(table[i][0]) ]
 
     table.remove_rows(nan_rows)
 
     # Smooth data by deleting overly 'spikey' points.
+    ## if flux - 0.5*(difference between neihbouring points) > 3*(distance between neighbouring points), spike identified
     spikes = [ i for i in range(1,len(table)-1) if \
             abs(table[i][1] - 0.5*(table[i-1][1]+table[i+1][1])) \
             > 3*abs(table[i+1][1] - table[i-1][1])]
 
+    ## flux smoothened out by changing those points to 0.5*distance between neighbouring points
     for i in spikes:
         table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
 
     return table
 
 
+def import_tasoclightcurve(file_path, drop_bad_points=False, flux='FLUX_CORR',
+                      ok_flags=[]):
+
+    try:
+        hdulist = fits.open(file_path)
+    except FileNotFoundError:
+        print("Import failed: file not found")
+        return
+
+    scidata = hdulist[1].data
+    table = Table(scidata)['TIME','FLUX_CORR','QUALITY']
+
+  
+    #if drop_bad_points:
+    #    bad_points = []
+    #    q_ind = get_quality_indices(table['QUALITY'])
+        
+    #    for j,q in enumerate(q_ind): # j=index, q=quality
+    #        if j+1 not in ok_flags:
+    #            bad_points += q.tolist() # adds bad_points by value of q (the quality indices) and converts to list
+    
+
+        # bad_points = [i for i in range(len(table)) if table[i][2]>0]
+    #    table.remove_rows(bad_points)
+
+
+    # Delete rows containing NaN values. 
+    ## if flux or time columns are NaN's, remove them.
+    #nan_rows = [ i for i in range(len(table)) if
+    #        math.isnan(table[i][1]) or math.isnan(table[i][0]) ]
+
+    #table.remove_rows(nan_rows)
+
+    ## Smooth data by deleting overly 'spikey' points.
+    ### if flux - 0.5*(difference between neihbouring points) > 3*(distance between neighbouring points), spike identified
+    #spikes = [ i for i in range(1,len(table)-1) if \
+    #        abs(table[i][1] - 0.5*(table[i-1][1]+table[i+1][1])) \
+    #        > 3*abs(table[i+1][1] - table[i-1][1])]
+
+    ### flux smoothened out by changing those points to 0.5*distance between neighbouring points
+    #for i in spikes:
+    #    table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
+
+    return table
+
 def calculate_timestep(table):
     """Returns median value of time differences between data points,
     estimate of time delta data points."""
 
-    dt = [ table[i+1][0] - table[i][0] for i in range(len(table)-1) ]
+    dt = [ table[i+1][0] - table[i][0] for i in range(len(table)-1) ] # calculates difference between (ith+1) - (ith) point 
     dt.sort()
-    return dt[int(len(dt)/2)]
+    return dt[int(len(dt)/2)] # median of them.
 
+    #np.median(np.diff(table['time']))
+
+    
 
 def clean_data(table):
     """Interpolates missing data points, so we have equal time gaps
@@ -101,11 +348,9 @@ def clean_data(table):
         ti, fi, qi = row
 
         if len(time) > 0:
-            steps = int(round( (ti - time[-1])/timestep ))
-
+            steps = int(round( (ti - time[-1])/timestep )) # (y2-y1)/(x2-x1)
             if steps > 1:
                 fluxstep = (fi - flux[-1])/steps
-
                 # For small gaps, pretend interpolated data is real.
                 if steps > 3:
                     set_real=0
@@ -117,19 +362,17 @@ def clean_data(table):
                     flux.append(fluxstep + flux[-1])
                     quality.append(0)
                     real.append(set_real)
-
         time.append(ti)
         flux.append(fi)
         quality.append(qi)
         real.append(1)
-
     return [np.array(x) for x in [time,flux,quality,real]]
 
 
 def normalise_flux(flux):
     """Requires flux to be a numpy array.
     Normalisation is x --> (x/mean(x)) - 1"""
-
+    flux = np.nan_to_num(flux)
     return flux/flux.mean() - np.ones(len(flux))
 
 
@@ -154,40 +397,63 @@ def fourier_filter(flux,freq_count):
     return flux - fitted_flux
 
 
-def lombscargle_filter(time,flux,real,min_score):
+def lombscargle_filter(time,flux,real,min_score,plotting=False):
     """Also removes periodic noise, using lomb scargle methods."""
     time_real = time[real == 1]
 
-    period = time[-1]-time[0]
+    period = time[-1]-time[0] # length of observation (size of sampling interval)
     N = len(time)
-    nyquist_period = (2*period)/N
+    nyquist_period = (2*period)/N # ??
 
-    min_freq = 1/period
-    nyquist_freq = N/(2*period)
+    min_freq = 1/period # Need at least two sampled points in every period you want to capture
+    nyquist_freq = N/(2*period) 
 
     try:
         for _ in range(30):
             flux_real = flux[real == 1]
             ls = LombScargle(time_real,flux_real)
-            powers = ls.autopower(method='fast',
-                                  minimum_frequency=min_freq,
-                                  maximum_frequency=nyquist_freq,
-                                  samples_per_peak=10)
-
-            i = np.argmax(powers[1])
-
-            if powers[1][i] < min_score:
+            freq,powers = ls.autopower(method='fast',minimum_frequency=min_freq,maximum_frequency=nyquist_freq,samples_per_peak=10)
+            i = np.argmax(powers)
+            if powers[i] < min_score:
                 break
 
-            flux -= ls.model(time,powers[0][i])
+            flux -= ls.model(time,freq[i])
+        
             del ls
     except:
         pass
 
+    if plotting:
+        plt.figure(figsize=(3,5))
+        plt.plot(freq,powers)
+        plt.title("Lomb-Scargle plot after in-place process")
+        plt.xlabel('frequency')
+        plt.ylabel('Lomb-Scargle power')
+
+def lombscargle_plotting(time,flux,real,min_score):
+    time_real = time[real == 1]
+
+    period = time[-1]-time[0] # length of observation (sampling interval)
+    N = len(time)
+    nyquist_period = (2*period)/N
+
+    min_freq = 1/period
+    nyquist_freq = N/(2*period) 
+
+    for _ in range(30):
+        flux_real = flux[real == 1]
+        freq,powers = LombScargle(time_real,flux_real).autopower(method='fast', minimum_frequency=min_freq,maximum_frequency=nyquist_freq,samples_per_peak=10)
+    return freq, powers
+
 
 def test_statistic_array(np.ndarray[np.float64_t,ndim=1] flux, int max_half_width):
+    """
+    inputs:
+    - flux
+    - maximum half width in cadences (eg 2.5 days: (48*2.5)/2) for 30 min)
+    """
     cdef int N = flux.shape[0]
-    cdef int n = max_half_width
+    cdef int n = max_half_width # int(max_half_width) max number of cadences in width array should be 120 (2.5 days)
 
     cdef int i, m, j
     cdef float mu,sigma,norm_factor
@@ -195,20 +461,25 @@ def test_statistic_array(np.ndarray[np.float64_t,ndim=1] flux, int max_half_widt
 
     cdef np.ndarray[dtype=np.float64_t,ndim=2] t_test = np.zeros([2*n,N])
 #    cdef np.ndarray[dtype=np.float64_t,ndim=1] flux_points = np.zeros(2*n)
-    for m in range(1,2*n):
+    """
+    m: number of cadences
+    """
 
-        m1 = math.floor((m-1)/2)
-        m2 = (m-1) - m1
+    for m in range(1,2*n): # looping over the different (full) widths
 
-        norm_factor = 1 / (m**0.5 * sigma)
+        m1 = math.floor((m-1)/2) # indices for that width: x
+        m2 = (m-1) - m1 # upper bound
+
+        norm_factor = 1 / (m**0.5 * sigma) # noise
 
         mu = flux[0:m].sum()
         t_test[m][m1] = mu * norm_factor
 
-        for i in range(m1+1,N-m2-1):
+        for i in range(m1+1,N-m2-1): # the actual search from start of lc to end of lc
+        #"""starts from slightly inside the lightcurve"""
 
             ##t_test[m][i] = flux[(i-m1):(i+m2+1)].sum() * norm_factor
-            mu += (flux[i+m2] - flux[i-m1-1])
+            mu += (flux[i+m2] - flux[i-m1-1]) # flux between some point and sum
             t_test[m][i] = mu * norm_factor
 
     return t_test
@@ -411,6 +682,239 @@ def get_quality_indices(sap_quality):
     '''Return list of indices where each quality bit is set'''
     q_indices = []
     for bit in np.arange(21)+1:
-        q_indices.append(np.where(sap_quality >> (bit-1) & 1 == 1)[0])
+        q_indices.append(np.where(sap_quality >> (bit-1) & 1 == 1)[0]) # returns sap_quality as bit (2**bit) 
 
     return q_indices
+
+
+def normalise_lc(flux):
+    return flux/flux.mean()
+
+def remove_zeros(data, flux):
+    return data[data[flux] != 0]
+
+def mad_plots(table,array,median,rms,clip,sector,camera):
+    """plots comparisons of MAD at sector camera combination between median, BL's MAD, and statistically clipped MAD"""
+    fig,ax = plt.subplots()
+    ax.scatter(range(0,len(table)), array, s=2)
+    ax.axhline(np.nanmedian(array), c='r',label='median')
+    ax.axhline(np.nanmedian(array)+10*np.std(array[900:950]),c='blue',label='visualised MAD') # [900:950] are generally quiet cadences
+    ax.axhline(median + clip*rms, c='orange',label='Sigma Clipped MAD')
+    ax.set_xlabel('Cadence Number')
+    ax.set_ylabel('Mean Absolute Deviation (MAD)')
+    ax.set_title(f'Cadence at {sector}-{camera}')
+    ax.legend()
+    plt.show()
+
+def processing(table,f_path,make_plots=False,power=0.08): # ,one_lc_analysis=False
+    """ performing the processing of the lightcurves to get 
+    
+    """
+
+    f = os.path.basename(f_path)
+    tic = f.split('_')[-1].split('.pkl')[0]
+    if len(table) > 120: # 120 represents 2.5 days
+        t, flux, quality, real = clean_data(table)
+
+        # now throw away interpolated points (we're reprocessing
+        # and trying to get the shape parameters right)
+        #t = t[np.array(real,dtype=bool)]
+        #flux = flux[np.array(real,dtype=bool)]
+        #quality = quality[np.array(real,dtype=bool)]
+        #real = real[np.array(real,dtype=bool)]
+        N = len(t)
+        ones = np.ones(N)
+        timestep = calculate_timestep(table)
+        
+        flux = normalise_flux(flux)
+
+        A_mag = np.abs(np.fft.rfft(flux))
+        # periodicnoise = flux - filteredflux
+
+        sigma = flux.std()
+
+        factor = ((1/48)/timestep)
+
+        # first Lomb-Scargle
+        flux_ls = np.copy(flux) 
+        lombscargle_filter(t,flux_ls,real,power) 
+        periodicnoise_ls = flux - flux_ls 
+        flux_ls = flux_ls * real 
+
+        T = test_statistic_array(flux_ls,60 * factor)
+        Ts = nonzero(T).std()
+
+        m, n = np.unravel_index(
+        T.argmin(), T.shape
+        )  # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
+
+        # Second Lomb-Scargle
+        masked_flux = np.copy(flux)
+        masked_flux[n - 72 : n + 72] = 0  # placeholder. need to chnage to match duration
+
+        original_masked_flux = np.copy(masked_flux)
+        lombscargle_filter(t, masked_flux, real, power)
+        periodicnoise_ls2 = original_masked_flux - masked_flux
+        masked_flux = masked_flux * real
+        final_flux = flux - periodicnoise_ls2
+
+        freq, powers = lombscargle_plotting(t, flux_ls, real, power)
+
+        T_new = test_statistic_array(final_flux, 60 * factor)
+        data_nonzeroT = nonzero(T_new).std()
+
+        m2, n2 = np.unravel_index(T_new.argmin(), T_new.shape)
+
+        minT = T_new[m2, n2]
+        minT_time = t[n2]
+        minT_flux = flux[n2]
+        minT_duration = m2 * timestep
+
+        
+        Tm = T[m2,n2]
+        Tm_time = t[n2]
+        Tm_duration = m2*timestep
+        Tm_start = n2-math.floor((m2-1)/2)
+        Tm_end = Tm_start + m2
+        Tm_depth = final_flux[Tm_start:Tm_end].mean() 
+
+        asym, width1, width2 = calc_shape(m2,n2,t,final_flux) # check the flux i use is correct
+        s = classify(m2,n2,real,asym)
+        
+        result_str =\
+                f+' '+\
+                ' '.join([str(round(a,8)) for a in
+                    [Tm, Tm/data_nonzeroT, Tm_time,
+                    asym,width1,width2,
+                    Tm_duration,Tm_depth]])+\
+                ' '+s
+        
+        if make_plots:
+            fig1, axarr = plt.subplots(9, figsize=(13, 22))
+
+            axarr[0].plot(A_mag)  # fourier plot
+            axarr[0].title.set_text("Fourier plot")
+            axarr[0].set_xlabel("frequency")
+            axarr[0].set_ylabel("power")
+            axarr[1].plot(freq, powers)
+            axarr[1].title.set_text("Lomb-Scargle plot")
+            axarr[1].set_xlabel("frequency")
+            axarr[1].set_ylabel("Lomb-Scargle power")
+            axarr[2].plot(t, flux + ones, label="flux")
+            axarr[2].plot(t, periodicnoise_ls + ones, label="periodic noise")
+            axarr[2].title.set_text("Original lightcurve and the periodic noise")
+            axarr[2].set_xlabel("Days in BTJD")
+            axarr[2].set_ylabel("Normalised flux")
+            axarr[2].legend(loc="lower left")
+            axarr[3].plot(t, flux_ls + ones)  # lomb-scargle plot
+            # axarr[3].plot(m,marker='o')
+            axarr[3].title.set_text("First noise-removed lightcurve (first Lomb-Scargle)")
+            axarr[3].set_xlabel("Days in BTJD")
+            axarr[3].set_ylabel("Normalised flux")
+
+            im = axarr[4].imshow(
+                T,
+                origin="bottom",
+                extent=axarr[3].get_xlim() + (0, 2.5),
+                aspect="auto",
+                cmap="rainbow",
+            )
+
+            cax = fig1.add_axes([1.02, 0.09, 0.05, 0.25])
+            axarr[4].title.set_text("An image of the lightcurve (first Lomb Scargle)")
+            axarr[4].set_xlabel("Days in BTJD")
+            axarr[4].set_ylabel("Transit width in days")
+            axarr[4].set_aspect("auto")
+            axarr[5].plot(t, original_masked_flux + ones, label="masked flux")
+            axarr[5].plot(t, periodicnoise_ls2 + ones, label="periodic noise")
+            axarr[5].legend()
+            axarr[5].title.set_text("Lomb-Scargle applied on masked flux")
+            axarr[6].scatter(t, final_flux + ones, label="final flux",s=4)
+            axarr[6].plot(t, flux + ones - 0.001, color="red", label="original flux")
+            axarr[6].legend()
+            axarr[6].title.set_text("Cleaned flux")
+
+            im = axarr[7].imshow(
+                T_new,
+                origin="bottom",
+                extent=axarr[3].get_xlim() + (0, 2.5),
+                aspect="auto",
+                cmap="rainbow",
+            )
+            axarr[7].title.set_text("An image of the final lightcurve (second Lomb Scargle)")
+
+            fig1.colorbar(im, cax=cax)
+            fig1.tight_layout()
+
+            try:
+                t2, x2, y2, w2, q2 = transit_shape(table,m2,n2,final_flux)
+                axarr[8].plot(t2, x2, t2, y2, t2, w2)
+                axarr[8].set_title("Transit shape in box")
+                axarr[8].set_xlabel("Days in BTJD")
+                axarr[8].set_ylabel("Normalised flux")
+            except:
+                pass
+
+
+            try:
+                os.makedirs("plots") # make directory plot if it doesn't exist
+            except FileExistsError:
+                pass
+                
+            fig1.savefig(f'plots/analysis_plot_{tic}.pdf')
+
+    else:
+        result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
+
+    return result_str
+
+def folders_in(path_to_parent):
+    """Identifies if directory is the lowest directory"""
+    for fname in os.listdir(path_to_parent):
+        if os.path.isdir(os.path.join(path_to_parent,fname)):
+            yield os.path.join(path_to_parent,fname)
+
+def transit_shape(table,m,n,flux):
+    """Calculating the shape of the asymmetric transit given the lightcurve, the parameters of the T statsitic (m and n), and parameters 
+    (mainly the lomb-scargle flux) obtained from `processing`.
+    
+    m: value of the minimum T statistic
+    n: the location of the minimum T statistic if it was *not* a flattened array.
+    params: parameters [A_mag,periodicnoise_ls,flux,flux_ls,T,N,ones] called by index. Only N (params[3]) is used.
+    
+
+    returns:
+    - t2: time values in between box region
+    - x2: flux values in between box region
+    - y2: gaussian curve fit for the dip
+    - w2: a comet curve fit for the dip
+    - q2: quality values in between box region
+
+    note: y2 and w2 are used to determine the asymmetry of the dip, and will be used to calculate an asymmetry score of the dip.
+    """
+
+
+    t,_,quality,_ = clean_data(table)
+    t2 = t[n - 3 * m : n + 3 * m]
+    x2 = flux[n - 3 * m : n + 3 * m]
+    q2 = quality[n - 3 * m : n + 3 * m] # quality points from three transit widths to other edge of three transit widths.
+    background = (sum(x2[: 1 * m]) + sum(x2[5 * m :])) / (2 * m)
+    x2 -= background
+    paramsgauss = single_gaussian_curve_fit(t2, -x2)
+    y2 = -gauss(t2, *paramsgauss)
+    paramscomet = comet_curve_fit(t2, -x2)
+    w2 = -comet_curve(t2, *paramscomet)
+
+    return t2, x2, y2, w2, q2 
+
+def mask_first_lombscargle(flux_ls):
+    """Masks an initial dip if found by the Lomb-Scargle periodogram. 
+    This is to remove smaller astrophysical variability that was not captured the first time of applying the LS periodogram.
+    
+    flux_ls: the flux after the first Lomb-Scargle."""
+
+    min_ind = np.argmin(flux_ls)
+    # this point is the "mid-transit". So create mask = 1 with box 1 day wide
+
+    # 48 cadences a day for 30-min
+    flux_ls[min_ind - 24:min_ind+24] = 0
