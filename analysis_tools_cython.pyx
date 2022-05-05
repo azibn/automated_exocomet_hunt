@@ -224,19 +224,22 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
         return
 
     scidata = hdulist[1].data
-    if 'kplr' in file_path:
-        table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
-    elif 'tasoc' in file_path:
-        table = Table(scidata)['TIME','FLUX_CORR','QUALITY']
-    else:
-    #elif 'tess' in file_path:
-        #try:
-        table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
-        #except:
-        #    time = scidata.TIME
-        #    flux = scidata.PDCSAP_FLUX
-        #    quality = scidata.QUALITY
-  
+    try:
+        if 'kplr' in file_path:
+            table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+        elif 'tasoc' in file_path:
+            table = Table(scidata)['TIME','FLUX_CORR','QUALITY']
+        else:
+        #elif 'tess' in file_path:
+            #try:
+            table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
+            #except:
+            #    time = scidata.TIME
+            #    flux = scidata.PDCSAP_FLUX
+            #    quality = scidata.QUALITY
+    except:
+        table = Table(scidata)['TIME','SAP_FLUX','QUALITY']
+    
     if drop_bad_points:
         bad_points = []
         if 'kplr' in file_path:
@@ -703,7 +706,7 @@ def mad_plots(table,array,median,rms,clip,sector,camera):
     ax.legend()
     plt.show()
 
-def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
+def processing(table,f_path,make_plots=False,power=0.08): # ,one_lc_analysis=False
     """ performing the processing of the lightcurves to get 
     
     """
@@ -734,7 +737,7 @@ def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
 
         # first Lomb-Scargle
         flux_ls = np.copy(flux) 
-        lombscargle_filter(t,flux_ls,real,0.06) 
+        lombscargle_filter(t,flux_ls,real,power) 
         periodicnoise_ls = flux - flux_ls 
         flux_ls = flux_ls * real 
 
@@ -750,12 +753,12 @@ def processing(table,f_path,make_plots=False): # ,one_lc_analysis=False
         masked_flux[n - 72 : n + 72] = 0  # placeholder. need to chnage to match duration
 
         original_masked_flux = np.copy(masked_flux)
-        lombscargle_filter(t, masked_flux, real, 0.06)
+        lombscargle_filter(t, masked_flux, real, power)
         periodicnoise_ls2 = original_masked_flux - masked_flux
         masked_flux = masked_flux * real
         final_flux = flux - periodicnoise_ls2
 
-        freq, powers = lombscargle_plotting(t, flux_ls, real, 0.06)
+        freq, powers = lombscargle_plotting(t, flux_ls, real, power)
 
         T_new = test_statistic_array(final_flux, 60 * factor)
         data_nonzeroT = nonzero(T_new).std()
