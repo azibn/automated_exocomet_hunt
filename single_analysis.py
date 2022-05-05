@@ -28,8 +28,8 @@ args = parser.parse_args()
 # If XRP TESS lightcurve, apply MAD. If Kepler lightcurve, skip to timestep
 if (os.path.split(args.fits_file[0])[1].startswith("kplr")) or (
     os.path.split(args.fits_file[0])[1].startswith("hlsp_tess")
-    and os.path.split(args.fits_file[0])[1].endswith("fits") or 
-    "qlp" in os.path.split(args.fits_file[0])[1]
+    and os.path.split(args.fits_file[0])[1].endswith("fits")
+    or "qlp" in os.path.split(args.fits_file[0])[1]
 ):
     # or os.path.split(args.fits_file[0])[1].startswith("tess")
     # and os.path.split(args.fits_file[0])[1].endswith("fits")

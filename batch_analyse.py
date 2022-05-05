@@ -43,7 +43,7 @@ parser.add_argument(
     default=3,
     type=int,
 )
-parser.add_argument("-ls",help="Lomb-Scargle power",default=0.08,dest="ls")
+parser.add_argument("-ls", help="Lomb-Scargle power", default=0.08, dest="ls")
 parser.add_argument("-p", help="enable plotting", action="store_true")
 
 # Get directories from command line arguments.
@@ -64,7 +64,7 @@ def mission_lightcurves(f_path):
         f = os.path.basename(f_path)
         print(f)
         table = import_lightcurve(f_path, flux=args.f, drop_bad_points=args.q)
-        result_str = processing(table, f_path,make_plots=args.p,power=args.ls)
+        result_str = processing(table, f_path, make_plots=args.p, power=args.ls)
         try:
             os.makedirs("output_log")  # make directory plot if it doesn't exist
         except FileExistsError:
@@ -87,7 +87,7 @@ def xrp_lightcurves(f_path):
         print(f_path)
         table = import_XRPlightcurve(f_path, sector=sector_test, clip=args.c)[0]
         table = table["time", args.f, "quality"]
-        result_str = processing(table, f_path, make_plots=args.p,power=args.ls)
+        result_str = processing(table, f_path, make_plots=args.p, power=args.ls)
         lock.acquire()
         try:
             os.makedirs("output_log_xrp")  # make directory plot if it doesn't exist
@@ -132,9 +132,9 @@ def single_file(f_path):
 
 if __name__ == "__main__":
 
-    sector_test = int(input("Sector? ")) #args.path[0].split("_")[
-        #-2
-    #]   # this is the case for XRP lightcurves... This is not required for mission lightcurves so it is ok to not consider them.
+    sector_test = int(input("Sector? "))  # args.path[0].split("_")[
+    # -2
+    # ]   # this is the case for XRP lightcurves... This is not required for mission lightcurves so it is ok to not consider them.
     pool = multiprocessing.Pool(processes=args.threads)
 
     for path in paths:
