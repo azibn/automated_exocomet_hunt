@@ -49,7 +49,7 @@ To format your files, enter shell and run:
 
 or
 
-`black scripts/*`
+`black *`
 
 to format contents of the entire directory.
 
