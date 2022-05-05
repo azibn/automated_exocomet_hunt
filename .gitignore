@@ -18,6 +18,8 @@ mad_figs
 # output files
 output_s*
 
+# batch_analyse_v2
+batch_reanalyse_asym.py
 
 # Temp vim files
 *.swp
