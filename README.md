@@ -1,4 +1,4 @@
-Code for automated detection of potential exocomets in light curves.
+Code for automated detection of exocomets in light curves.
 
 ### Installation
 
@@ -7,7 +7,6 @@ Latest tested in Python 3.7
 	git clone https://github.com/azibn/automated_exocomet_hunt
 	conda env create -f environment.yml
 	conda activate auto_exo
-	./make
 
 Alternatively, you can try this:
 
@@ -17,27 +16,15 @@ Alternatively, you can try this:
 	pip install lightkurve kplr eleanor
 	./make
  
-Note: Different package versions may cause conflicts, so it is recommended to run this code using the virtual environment setup placed above. 
-
-The original installation is below, if neither of the above work.
-
-----
-
-Requires Python 3 (tested in 3.5). Needs Numpy, Scipy, Astropy and Matplotlib libraries, and a working Cython install. 
-
-Install by running:
-
-    git clone https://github.com/greghope667/comet_project
-    cd comet_project
-    ./make
+Different package versions may cause conflicts, so it is recommended to run this code using the virtual environment setup placed above. 
 
 ### Usage
 
-These scripts currently run on TESS and Kepler lightcurves. For TESS, we have currently only used Eleanor lightcurves kindly provided by the XRP group, saved as pickle files and stored in a Google Bucket. Work in progress to utilise other lightcurve (SPOC, TASOC etc) formats is ongoing. 
+These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves
 
 Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/). 
 
-(In development): TESS SPOC lightcurves can also be obtained from [MAST](https://archive.stsci.edu/missions/tess/tid/).
+TESS SPOC lightcurves can also be obtained from [MAST](https://archive.stsci.edu/missions/tess/tid/).
 
 `single_analysis.py` runs on a single file, for example:
  
@@ -74,9 +61,3 @@ https://github.com/greghope667/comet_project_results contains a description of t
 * all_snr_gt_5_ok.txt is the final list of 7,217 transits
 
 
-### Other files
-
-* The jupyter notebook figs.ipynb contains code to explore individual light curves, and makes most of the plots in the paper.
-* XRPNotebook.ipynb contains the interactive version of single_analysis.py with Beta Pic as the target star.
-* The text file artefact_list.txt contains a list of artefacts found among candidates.
-* dr2.xml and young-cl.xml contain votables of stars from Gaia used in the HR diagrams.
