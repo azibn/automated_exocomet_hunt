@@ -54,7 +54,6 @@ or
 
 to format contents of the entire directory.
 
-### But it works on my computer??
+### Docker
 
-You can use this pipeline with Docker if the setup fails for whatever reason, or if you just fancy a Dockerised container. If you are not familiar with Docker [this page](https://www.docker.com/resources/what-container) is a good starting point. But don't worry, you don't really need to know how it works to use it. This is still in development, so if there are any issues do get in touch.
-
+You can use this pipeline with Docker if the setup fails for whatever reason, or if you just fancy a Dockerised container. If you are not familiar with Docker [this page](https://www.docker.com/resources/what-container) is a good starting point. But don't worry, you don't really need to know how it works to use it! This is still in development, as we're still working out the system requirements etc, so if there are any issues do get in touch. 
