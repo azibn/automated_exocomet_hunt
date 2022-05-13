@@ -22,15 +22,16 @@ Different package versions may cause conflicts, so it is recommended to run this
 
 These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves
 
-Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/). 
 
+#### Useful directories
+Kepler lightcurves from [MAST](https://archive.stsci.edu/kepler/). 
 TESS SPOC lightcurves can also be obtained from [MAST](https://archive.stsci.edu/missions/tess/tid/).
 
 `single_analysis.py` runs on a single file, for example:
  
  TESS:
 
-    python single_analysis_xrp.py tesslcs_sector_6_104_2_min_cadence_targets_tesslc_270577175.pkl
+    python single_analysis.py tesslcs_sector_6_104_2_min_cadence_targets_tesslc_270577175.pkl
  
  Kepler:
 
@@ -53,11 +54,7 @@ or
 
 to format contents of the entire directory.
 
-### Output
+### But it works on my computer??
 
-https://github.com/greghope667/comet_project_results contains a description of the output table format produced by this code, as well as the output when run on the entire Kepler dataset. See there also for description of the format of the txt files with dips, and how to filter then with the awk scripts.
-
-* all_snr_gt_5.txt is the full list of 67,532 potential transits
-* all_snr_gt_5_ok.txt is the final list of 7,217 transits
-
+You can use this pipeline with Docker if the setup fails for whatever reason, or if you just fancy a Dockerised container. If you are not familiar with Docker [this page](https://www.docker.com/resources/what-container) is a good starting point. But don't worry, you don't really need to know how it works to use it. This is still in development, so if there are any issues do get in touch.
 
