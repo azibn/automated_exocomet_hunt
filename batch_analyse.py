@@ -43,7 +43,8 @@ parser.add_argument(
     default=3,
     type=int,
 )
-parser.add_argument("-ls", help="Lomb-Scargle power", default=0.08, dest="ls")
+parser.add_argument("-ls", help="Lomb-Scargle power", default=0.10, dest="ls")
+parser.add_argument("-step", help="default twostep", dest="step",action="store_false")
 parser.add_argument("-p", help="enable plotting", action="store_true")
 
 # Get directories from command line arguments.
@@ -64,7 +65,7 @@ def mission_lightcurves(f_path):
         f = os.path.basename(f_path)
         print(f)
         table = import_lightcurve(f_path, flux=args.f, drop_bad_points=args.q)
-        result_str = processing(table, f_path, make_plots=args.p, power=args.ls)
+        result_str = processing(table,f_path, make_plots=args.p, power=args.ls,twostep=args.step)
         try:
             os.makedirs("output_log")  # make directory plot if it doesn't exist
         except FileExistsError:
@@ -85,12 +86,12 @@ def xrp_lightcurves(f_path):
     try:
         f = os.path.basename(f_path)
         print(f_path)
-        table = import_XRPlightcurve(f_path, sector=sector_test, clip=args.c)[0]
+        table = import_XRPlightcurve(f_path, sector=sector, clip=args.c)[0]
         table = table["time", args.f, "quality"]
-        result_str = processing(table, f_path, make_plots=args.p, power=args.ls)
+        result_str = processing(table, f_path, make_plots=args.p, power=args.ls,twostep=args.step)
         lock.acquire()
         try:
-            os.makedirs("output_log_xrp")  # make directory plot if it doesn't exist
+            os.makedirs("output_log_xrp")  # makes directory plot if it doesn't exist
         except FileExistsError:
             pass
         with open(os.path.join("output_log_xrp/", args.of), "a") as out_file:
@@ -102,7 +103,6 @@ def xrp_lightcurves(f_path):
     except Exception as e:
         print("\nError with file " + f_path, file=sys.stderr)
         traceback.print_exc()
-
 
 def single_file(f_path):
     try:
@@ -129,17 +129,18 @@ def single_file(f_path):
         print("\nError with file " + f_path, file=sys.stderr)
         traceback.print_exc()
 
-
 if __name__ == "__main__":
 
-    sector_test = int(input("Sector? "))  # args.path[0].split("_")[
-    # -2
-    # ]   # this is the case for XRP lightcurves... This is not required for mission lightcurves so it is ok to not consider them.
+    sector = int(input("Sector? "))
     pool = multiprocessing.Pool(processes=args.threads)
 
     for path in paths:
         if not os.path.isdir(path):
-            # result_str = single_file(path)
+            # df = pd.read_csv(path)
+            # path_to_dir = f'/storage/astro2/phrdhx/tesslcs/tesslcs_sector_{sector}_104/'
+            # for i in df:
+            #     files = glob.glob(os.path.join(path_to_dir, "**/*.pkl"))
+            #     print(files)
 
             print(path, "not a directory, skipping.", file=sys.stderr)
             continue
@@ -159,13 +160,13 @@ if __name__ == "__main__":
             print("globbing subdirectories")
 
             # Start at Sector directory, glob goes through `target/000x/000x/xxxx/**/*lc.fits`
-            fits_files = glob.glob(os.path.join(path, "target/**/**/**/**/*lc.fits"))
-
+            fits_files = sorted(glob.glob(os.path.join(path, "target/**/**/**/**/*lc.fits")))
+ 
             # These are test SPOC files that I have in my home CSC directory
             # test_fits = glob.glob(os.path.join(path,'**/**/*lc.fits'))
 
             # Starts at sector directory. globs files in one subdirectory level below
-            pkl_files = glob.glob(os.path.join(path, "**/*.pkl"))
+            pkl_files = sorted(glob.glob(os.path.join(path, "**/*.pkl")))
 
             pool.map(xrp_lightcurves, pkl_files)
             pool.map(mission_lightcurves, fits_files)

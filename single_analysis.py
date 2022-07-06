@@ -13,42 +13,44 @@ import sys
 import matplotlib.pyplot as plt
 import argparse
 import glob
+import math
 
 
 parser = argparse.ArgumentParser(description="Analyse target lightcurve.")
-parser.add_argument(help="Target lightcurve file", nargs=1, dest="fits_file")
+parser.add_argument(help="Target lightcurve file", nargs=1, dest="file")
 parser.add_argument("-n", help="No graphical output", action="store_true")
 parser.add_argument(
     "-q", help="Keep only points with SAP_QUALITY=0", action="store_true"
 )
+parser.add_argument("-s", help="TESS sector for XRP lightcurves",dest="sector",default=6)
 
 
 args = parser.parse_args()
 
 # If XRP TESS lightcurve, apply MAD. If Kepler lightcurve, skip to timestep
-if (os.path.split(args.fits_file[0])[1].startswith("kplr")) or (
-    os.path.split(args.fits_file[0])[1].startswith("hlsp_tess")
-    and os.path.split(args.fits_file[0])[1].endswith("fits")
-    or "qlp" in os.path.split(args.fits_file[0])[1]
+if (os.path.split(args.file[0])[1].startswith("kplr")) or (
+    os.path.split(args.file[0])[1].startswith("hlsp_tess")
+    and os.path.split(args.file[0])[1].endswith("fits")
+    or "qlp" in os.path.split(args.file[0])[1]
 ):
-    # or os.path.split(args.fits_file[0])[1].startswith("tess")
-    # and os.path.split(args.fits_file[0])[1].endswith("fits")
+    # or os.path.split(args.file[0])[1].startswith("tess")
+    # and os.path.split(args.file[0])[1].endswith("fits")
     # ):
-    table = import_lightcurve(args.fits_file[0])
+    table = import_lightcurve(args.file[0])
     t, flux, quality, real = clean_data(table)
 
 
-elif "tasoc" in os.path.split(args.fits_file[0])[1]:
-    table = import_tasoclightcurve(args.fits_file[0])
+elif "tasoc" in os.path.split(args.file[0])[1]:
+    table = import_tasoclightcurve(args.file[0])
     plt.plot(table["TIME"], table["FLUX_CORR"])
     t, flux, quality, real = clean_data(table)
 
-elif os.path.split(args.fits_file[0])[1].endswith(".csv"):
-    table = import_eleanor(args.fits_file[0], 6, 1, 4, drop_bad_points=True)
-    t, flux, quality, real = clean_data(table)
+# elif os.path.split(args.file[0])[1].endswith(".csv"):
+#     table = import_eleanor(args.file[0], args.sector, 1, 4, drop_bad_points=True)
+#     t, flux, quality, real = clean_data(table)
 else:
     table, lc_info = import_XRPlightcurve(
-        args.fits_file[0], sector=6, clip=4, drop_bad_points=True
+        args.file[0], sector=args.sector, clip=4, drop_bad_points=True
     )
     to_clean = table["time", "PCA flux", "quality"]
     t, flux, quality, real = clean_data(to_clean)
@@ -64,7 +66,6 @@ ones = np.ones(N)
 
 flux = normalise_flux(flux)
 
-# filteredflux = fourier_filter(flux, 8) # returns smooth lc
 # Fourier Transform
 A_mag = np.abs(np.fft.rfft(flux))
 
@@ -95,13 +96,14 @@ m, n = np.unravel_index(
 # minT_duration = m * timestep
 
 masked_flux = np.copy(flux)
-masked_flux[n - 72 : n + 72] = 0  # placeholder. need to chnage to match duration
+masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  # 2x width of dip
 
 original_masked_flux = np.copy(masked_flux)
 lombscargle_filter(t, masked_flux, real, 0.08)
 periodicnoise_ls2 = original_masked_flux - masked_flux
 masked_flux = masked_flux * real
 final_flux = flux - periodicnoise_ls2
+final_flux = final_flux * real
 
 T_new = test_statistic_array(final_flux, 60 * factor)
 data_nonzeroT = nonzero(T_new)
@@ -149,12 +151,10 @@ if (
     print("Quality flags:", qual_flags)
 
 # Classify events
-asym, _, _ = calc_shape(m2, n2, t, final_flux)
+asym= calc_shape(m2, n2, t, quality, flux)
 print(classify(m2, n2, real, asym))
 
-# Skip plotting if no graphical output set
-if args.n:
-    sys.exit()
+
 
 fig1, axarr = plt.subplots(8, figsize=(13, 22))
 # plt.rcParams['font.size'] = '16'
@@ -230,40 +230,17 @@ except:
     pass
 
 
+# Skip showing plots if no graphical output set
+if args.n:
+    sys.exit()
 plt.show()
+
 try:
-    os.makedirs("figs_tess")  # make directory plot if it doesn't exist
+    os.makedirs("figs_single_analysis")  # make directory plot if it doesn't exist
 except FileExistsError:
     pass
 
-fig1.savefig("figs_tess/fourier plots", dpi=300)
-
-
-# Lightcurve plots
-
-# fig, ax = plt.subplots(3,sharex=True,figsize=(18, 10))
-# ax[0].plot(t, flux + ones, label="flux")
-# ax[0].plot(t, periodicnoise_ls + ones, label="periodic noise")
-# ax[0].title.set_text("Raw lightcurve and the periodic noise")
-# ax[0].set_xlabel("Days in BTJD")
-# ax[0].set_ylabel("Normalised flux")
-# ax[0].legend(loc='lower left')
-# ax[1].plot(t, flux_ls + ones)  # lomb-scargle plot
-# ax[1].title.set_text("Noise-removed lightcurve")
-# ax[1].set_xlabel("Days in BTJD")
-# ax[1].set_ylabel("Normalised flux")
-# im = ax[2].imshow(
-#     T,
-#     origin="bottom",
-#     extent=axarr[1].get_xlim() + (0, 2.5),
-#     aspect="auto",
-#     cmap="rainbow",
-# )
-# cax = fig.add_axes([1.02, 0.01, 0.05, 0.25])
-# ax[2].title.set_text("An image of the lightcurve")
-# ax[2].set_xlabel("Days in BTJD")
-# ax[2].set_ylabel("Transit width in days")
-# ax[2].set_aspect("auto")
-# fig.colorbar(im, cax=cax)
-# fig.tight_layout()
-# plt.show()
+try:
+    fig1.savefig(f"figs_single_analysis/plots_TIC{lc_info[0]}", dpi=300)
+except: 
+    fig1.savefig(f"figs_single_analysis/plots_{args.file[0].split('/')[-1].split('.fits')[0]}", dpi=300)
