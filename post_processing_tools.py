@@ -14,12 +14,15 @@ def get_output(file_path):
     - df: DataFrame of output file.
 
     """
-    with open(file_path) as f:
-        lines = f.readlines()
-    lc_lists = [word for line in lines for word in line.split()]
-    lc_lists = [lc_lists[i : i + 10] for i in range(0, len(lc_lists), 10)]
+    df = pd.read_csv(file_path,sep=' ',header=None)
+
+    # with open(file_path) as f:
+    #     lines = f.readlines()
+    # lc_lists = [word for line in lines for word in line.split()]
+    # lc_lists = [lc_lists[i : i + 11] for i in range(0, len(lc_lists), 11)]
     cols = [
         "file",
+        "tmag",
         "signal",
         "signal/noise",
         "time",
@@ -30,8 +33,7 @@ def get_output(file_path):
         "depth",
         "transit_prob",
     ]
-    df = pd.DataFrame(data=lc_lists, columns=cols)
-    df[cols[1:-1]] = df[cols[1:-1]].astype("float32")
+    df.columns = cols
     return df
 
 

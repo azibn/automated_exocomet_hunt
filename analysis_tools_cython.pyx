@@ -41,7 +41,7 @@ def download_lightcurve(file, path='.'):
 
 def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],return_type='astropy'):
     """
-    file_path: path to file
+    file_path: path to file (takes pkl and csv)
     sector = lightcurve sector
     drop_bad_points: Removing outlier points. Default False
     mad_plots: plots MAD comparisons
@@ -54,22 +54,33 @@ def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],
         - ok_flags = [14]: the MAD excluded data.
         - info: additional information about the lightcurve (TIC ID, RA, DEC, TESS magnitude, Camera, Chip)
     """
-    lc = pd.read_pickle(file_path)
+    if file_path.endswith('.pkl'):
+        lc = pd.read_pickle(file_path)
 
-    for i in range(len(lc)):
-        if isinstance(lc[i], np.ndarray):
-            lc[i] = pd.Series(lc[i])
-    for_df = lc[6:]  # TIC ID, RA, DEC, TESS magnitude, Camera, Chip
-    columns = [
-        "time",
-        "raw flux",
+        for i in range(len(lc)):
+            if isinstance(lc[i], np.ndarray):
+                lc[i] = pd.Series(lc[i])
+        for_df = lc[6:]  # TIC ID, RA, DEC, TESS magnitude, Camera, Chip
+        columns = [
+            "time",
+            "raw flux",
+            "corrected flux",
+            "PCA flux",
+            "flux error",
+            "quality",
+        ]
+        df = pd.DataFrame(data=for_df).T 
+        df.columns = columns
+    else:
+        for_df = pd.read_csv(file_path)
+        columns = [
+        "time", 
         "corrected flux",
-        "PCA flux",
-        "flux error",
-        "quality",
-    ]
-    df = pd.DataFrame(data=for_df).T 
-    df.columns = columns
+        "quality"
+        ]
+        df = pd.DataFrame(data=for_df)
+        df.columns = columns
+    
 
     table = Table.from_pandas(df)
 
@@ -112,7 +123,6 @@ def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],
                 bad_points += q.tolist()
         table.remove_rows(bad_points)
 
-    
     # Delete rows containing NaN values. 
     nan_rows = [ i for i in range(len(table)) if
             math.isnan(table[i][2]) or math.isnan(table[i][0]) ] 
@@ -135,86 +145,12 @@ def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],
         return table, lc[0:6]
 
 
-def import_eleanor(file_path,sector,camera,clip,drop_bad_points=True,ok_flags=[],return_type='astropy'):
-    df = pd.read_csv(file_path)
-    columns = [
-        "time", 
-        "corrected flux",
-        "quality"
-    ]
-    df = pd.DataFrame(data=df)
-    df.columns = columns
-
-    table = Table.from_pandas(df)
-
-    # loading Ethan Kruse bad times
-    bad_times = data.load_bad_times()
-    bad_times = bad_times - 2457000
-    
-    # loading MAD 
-    mad_df = data.load_mad()
-    sec = sector
-    camera = camera
-    mad_arr = mad_df.loc[:len(table)-1,f"{sec}-{camera}"]
-    sig_clip = sigma_clip(mad_arr,sigma=clip,masked=True)
-
-    # applied MAD cut to keep points within selected sigma
-    mad_cut = mad_arr.values < ~sig_clip.mask 
-    
-    # return indices of values above MAD threshold
-    matched_ind = np.where(~mad_cut) # indices of MAD's above threshold
-
-    # Change quality of matched indices to 2**(17-1) (or add 2**(17-1) if existing flag already present)
-    table['quality'][matched_ind] += 2**(17-1)
-    table['quality'] = table['quality'].astype(np.int32) # int32 set so it can work with `get_quality_indices` function
-
-    # Ethan Kruse bad time mask
-    mask = np.ones_like(table['time'], dtype=bool)
-    for i in bad_times:
-        newchunk = (table['time']<i[0])|(table['time']>i[1])
-        mask = mask & newchunk
-        
-    # Apply Kruse bad mask to table
-    table = table[mask]
-
-    if drop_bad_points:
-        bad_points = []
-        q_ind = get_quality_indices(table['quality'])
-    
-        for j,q in enumerate(q_ind): # j=index, q=quality
-            if j+1 not in ok_flags:
-                bad_points += q.tolist()
-        table.remove_rows(bad_points)
-
-    
-    # Delete rows containing NaN values. 
-    nan_rows = [ i for i in range(len(table)) if
-            math.isnan(table[i][2]) or math.isnan(table[i][0]) ] 
-    table.remove_rows(nan_rows)
-
-    # Smooth data by deleting overly 'spikey' points.
-    spikes = [ i for i in range(1,len(table)-1) if \
-            abs(table[i][1] - 0.5*(table[i-1][1]+table[i+1][1])) \
-            > 3*abs(table[i+1][1] - table[i-1][1])]
-
-    for i in spikes:
-        table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
-    #print(len(table),"length at end")
-
-    if return_type == 'pandas':
-
-        return table.to_pandas()
-    else:
-
-        return table
-
-
 def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
-                      ok_flags=[5]):
+                      ok_flags=[]):
     """Returns (N by 2) table, columns are (time, flux).
 
     Flags deemed to be OK are:
-    5 - reaction wheel zero crossing, matters for short cadence
+    5 - reaction wheel zero crossing, matters for short cadence (Kepler)
     """
 
     try:
@@ -617,7 +553,7 @@ def classify(m,n,real,asym):
         return "maybeTransit"
 
 
-def calc_shape(m,n,time,flux,cutout_half_width=5,
+def calc_shape(m,n,time,quality,flux,cutout_half_width=3,
                n_m_bg_start=3, n_m_bg_end=1):
     """Fit both symmetric and comet-like transit profiles and compare fit.
     Returns:
@@ -630,10 +566,12 @@ def calc_shape(m,n,time,flux,cutout_half_width=5,
     -5 : Gap within 2 days before dip
 
     (2,3) Widths of comet curve fit segments.
+    info: t, x, q, fit1 and fit2 are the transit shape elements 
+
     """
     w = cutout_half_width
     if n-w*m >= 0 and n+w*m < len(time):
-        t = time[n-w*m:n+w*m]
+        t = time[n-w*m:n+w*m] # time
         if (t[-1]-t[0]) / np.median(np.diff(t)) / len(t) > 1.5:
             return -4,-4,-4
         t0 = time[n]
@@ -641,7 +579,8 @@ def calc_shape(m,n,time,flux,cutout_half_width=5,
         for i,diff in enumerate(diffs):
             if diff > 0.5 and (t0-t[i])>0 and (t0-t[i])<2:
                 return -5,-5,-5
-        x = flux[n-w*m:n+w*m]
+        x = flux[n-w*m:n+w*m] # flux
+        q = quality[n-w*m:n+w*m]
         # background_level = (sum(x[:m]) + sum(x[(2*w-1)*m:]))/(2*m)
         bg_l1 = np.mean(x[:n_m_bg_start*m])
         bg_t1 = np.mean(t[:n_m_bg_start*m])
@@ -655,14 +594,14 @@ def calc_shape(m,n,time,flux,cutout_half_width=5,
             params1 = single_gaussian_curve_fit(t,-x)
             params2 = comet_curve_fit(t,-x)
         except:
-            return -3,-3,-3
+            return -3,-3,-3, [t,x,q]
 
         fit1 = -gauss(t,*params1)
         fit2 = -comet_curve(t,*params2)
 
         scores = [score_fit(x,fit) for fit in [fit1,fit2]]
         if scores[1] > 0:
-            return scores[0]/scores[1], params2[2], params2[3]
+            return scores[0]/scores[1], params2[2], params2[3], [t,x,q,fit1,fit2]
         else:
             return -1,-1,-1
     else:
@@ -706,16 +645,21 @@ def mad_plots(table,array,median,rms,clip,sector,camera):
     ax.legend()
     plt.show()
 
-def processing(table,f_path,make_plots=False,power=0.08): # ,one_lc_analysis=False
-    """ performing the processing of the lightcurves to get 
-    
-    """
+def processing(table,f_path,make_plots=False,power=0.08,twostep=True): 
+
 
     f = os.path.basename(f_path)
-    tic = f.split('_')[-1].split('.pkl')[0]
-    if len(table) > 120: # 120 represents 2.5 days
-        t, flux, quality, real = clean_data(table)
+    if f.endswith('.pkl'):
+        tic = f.split('_')[-1].split('.pkl')[0] # eleanor
+    elif "spoc" in f:
+        tic = f.split('_')[-5]
 
+    
+    if len(table) > 120: # 120 represents 2.5 days
+       
+        t, flux, quality, real = clean_data(table)
+        timestep = calculate_timestep(table)
+        factor = ((1/48)/timestep)
         # now throw away interpolated points (we're reprocessing
         # and trying to get the shape parameters right)
         #t = t[np.array(real,dtype=bool)]
@@ -724,16 +668,12 @@ def processing(table,f_path,make_plots=False,power=0.08): # ,one_lc_analysis=Fal
         #real = real[np.array(real,dtype=bool)]
         N = len(t)
         ones = np.ones(N)
-        timestep = calculate_timestep(table)
-        
         flux = normalise_flux(flux)
-
         A_mag = np.abs(np.fft.rfft(flux))
         # periodicnoise = flux - filteredflux
 
-        sigma = flux.std()
+        #sigma = flux.std()
 
-        factor = ((1/48)/timestep)
 
         # first Lomb-Scargle
         flux_ls = np.copy(flux) 
@@ -741,127 +681,171 @@ def processing(table,f_path,make_plots=False,power=0.08): # ,one_lc_analysis=Fal
         periodicnoise_ls = flux - flux_ls 
         flux_ls = flux_ls * real 
 
-        T = test_statistic_array(flux_ls,60 * factor)
-        Ts = nonzero(T).std()
+        freq, powers = LombScargle(t,flux).autopower()
+        T1 = test_statistic_array(flux_ls,60 * factor)
+        Ts = nonzero(T1).std()
 
         m, n = np.unravel_index(
-        T.argmin(), T.shape
+        T1.argmin(), T1.shape
         )  # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
+        minT = T1[m, n]
+        minT_time = t[n]
+        minT_duration = m * timestep
+        Tm_start = n-math.floor((m-1)/2)
+        Tm_end = Tm_start + m
+        Tm_depth = flux[Tm_start:Tm_end].mean() 
+        final_flux = flux_ls.copy() # for plot matching purposes
 
         # Second Lomb-Scargle
-        masked_flux = np.copy(flux)
-        masked_flux[n - 72 : n + 72] = 0  # placeholder. need to chnage to match duration
+        if twostep:
+            masked_flux = np.copy(flux)
+            masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  # placeholder. need to change to match duration
+            original_masked_flux = np.copy(masked_flux)
+            lombscargle_filter(t, masked_flux, real, power)
+            periodicnoise_ls2 = original_masked_flux - masked_flux
+            masked_flux = masked_flux * real
+            final_flux = flux - periodicnoise_ls2
+            final_flux = final_flux * real
 
-        original_masked_flux = np.copy(masked_flux)
-        lombscargle_filter(t, masked_flux, real, power)
-        periodicnoise_ls2 = original_masked_flux - masked_flux
-        masked_flux = masked_flux * real
-        final_flux = flux - periodicnoise_ls2
 
-        freq, powers = lombscargle_plotting(t, flux_ls, real, power)
+            #freq, powers = lombscargle_plotting(t, flux_ls, real, power)
+            T2 = test_statistic_array(final_flux, 60 * factor)
+            
+            Ts = nonzero(T2).std()
 
-        T_new = test_statistic_array(final_flux, 60 * factor)
-        data_nonzeroT = nonzero(T_new).std()
+            m, n = np.unravel_index(T2.argmin(), T2.shape)
 
-        m2, n2 = np.unravel_index(T_new.argmin(), T_new.shape)
-
-        minT = T_new[m2, n2]
-        minT_time = t[n2]
-        minT_flux = flux[n2]
-        minT_duration = m2 * timestep
+            minT = T2[m,n]
+            minT_time = t[n]
+            minT_duration = m*timestep
+            Tm_start = n-math.floor((m-1)/2)
+            Tm_end = Tm_start + m
+            Tm_depth = flux[Tm_start:Tm_end].mean() 
 
         
-        Tm = T[m2,n2]
-        Tm_time = t[n2]
-        Tm_duration = m2*timestep
-        Tm_start = n2-math.floor((m2-1)/2)
-        Tm_end = Tm_start + m2
-        Tm_depth = final_flux[Tm_start:Tm_end].mean() 
-
-        asym, width1, width2 = calc_shape(m2,n2,t,final_flux) # check the flux i use is correct
-        s = classify(m2,n2,real,asym)
+        try:
+            plt.figure(figsize=(30,5))
+            #plt.plot(t,final_flux)
+            asym, width1, width2, info = calc_shape(m,n,t,quality,final_flux) # check why flux; plotting purposes?
+            s = classify(m,n,real,asym)
+            plt.plot(t,final_flux-0.002,label='final_flux (after detrending)')
+            plt.plot(t,flux-0.002,label='flux')
+            plt.legend()
+            plt.title('3 transit width')
+        except ValueError:
+            asym, width1, width2 = calc_shape(m,n,t,quality,final_flux)
+            s = classify(m,n,real,asym) 
         
         result_str =\
                 f+' '+\
                 ' '.join([str(round(a,8)) for a in
-                    [Tm, Tm/data_nonzeroT, Tm_time,
+                    [minT, minT/Ts, minT_time,
                     asym,width1,width2,
-                    Tm_duration,Tm_depth]])+\
+                    minT_duration,Tm_depth]])+\
                 ' '+s
         
         if make_plots:
-            fig1, axarr = plt.subplots(9, figsize=(13, 22))
+            try:
+                os.makedirs("plots") # make directory plot if it doesn't exist
+            except FileExistsError:
+                pass
+            columns = [
+                "file",
+                "signal",
+                "signal/noise",
+                "time",
+                "asym_score",
+                "width1",
+                "width2",
+                "duration",
+                "depth",
+                "transit_prob",
+            ]
+            #result_str_df = pd.DataFrame(data=[result_str.split(' ')],columns=columns)
+            fig1, axarr = plt.subplots(10, figsize=(13, 22))
 
-            axarr[0].plot(A_mag)  # fourier plot
-            axarr[0].title.set_text("Fourier plot")
-            axarr[0].set_xlabel("frequency")
-            axarr[0].set_ylabel("power")
-            axarr[1].plot(freq, powers)
-            axarr[1].title.set_text("Lomb-Scargle plot")
+            # get table in pdf
+            axarr[0].axis('off')
+            axarr[0].table(cellText=[result_str.split(' ')],colLabels=columns,loc='center')
+            axarr[1].plot(A_mag)  # fourier plot
+            axarr[1].title.set_text("Fourier plot")
             axarr[1].set_xlabel("frequency")
-            axarr[1].set_ylabel("Lomb-Scargle power")
-            axarr[2].plot(t, flux + ones, label="flux")
-            axarr[2].plot(t, periodicnoise_ls + ones, label="periodic noise")
-            axarr[2].title.set_text("Original lightcurve and the periodic noise")
-            axarr[2].set_xlabel("Days in BTJD")
-            axarr[2].set_ylabel("Normalised flux")
-            axarr[2].legend(loc="lower left")
-            axarr[3].plot(t, flux_ls + ones)  # lomb-scargle plot
-            # axarr[3].plot(m,marker='o')
-            axarr[3].title.set_text("First noise-removed lightcurve (first Lomb-Scargle)")
+            axarr[1].set_ylabel("power")
+            axarr[2].plot(freq, powers)
+            axarr[2].title.set_text("Lomb-Scargle plot")
+            axarr[2].set_xlabel("frequency")
+            axarr[2].set_ylabel("Lomb-Scargle power")
+            axarr[3].plot(t, flux, label="flux")
+            axarr[3].plot(t, periodicnoise_ls, label="periodic noise")
+            axarr[3].set_xlim(np.min(t),np.max(t))
+            axarr[3].title.set_text("Original lightcurve and the periodic noise")
             axarr[3].set_xlabel("Days in BTJD")
             axarr[3].set_ylabel("Normalised flux")
+            axarr[3].legend(loc="lower left")
+            axarr[4].plot(t, flux_ls)  # lomb-scargle plot
+            axarr[4].set_xlim(np.min(t),np.max(t))
 
-            im = axarr[4].imshow(
-                T,
+            # axarr[4].plot(m,marker='o')
+            axarr[4].title.set_text("First noise-removed lightcurve (first Lomb-Scargle)")
+            axarr[4].set_xlabel("Days in BTJD")
+            axarr[4].set_ylabel("Normalised flux")
+            im = axarr[5].imshow(
+                T1,
                 origin="bottom",
-                extent=axarr[3].get_xlim() + (0, 2.5),
+                extent=axarr[4].get_xlim() + (0, 2.5),
                 aspect="auto",
                 cmap="rainbow",
             )
 
             cax = fig1.add_axes([1.02, 0.09, 0.05, 0.25])
-            axarr[4].title.set_text("An image of the lightcurve (first Lomb Scargle)")
-            axarr[4].set_xlabel("Days in BTJD")
-            axarr[4].set_ylabel("Transit width in days")
-            axarr[4].set_aspect("auto")
-            axarr[5].plot(t, original_masked_flux + ones, label="masked flux")
-            axarr[5].plot(t, periodicnoise_ls2 + ones, label="periodic noise")
-            axarr[5].legend()
-            axarr[5].title.set_text("Lomb-Scargle applied on masked flux")
-            axarr[6].scatter(t, final_flux + ones, label="final flux",s=4)
-            axarr[6].plot(t, flux + ones - 0.001, color="red", label="original flux")
-            axarr[6].legend()
-            axarr[6].title.set_text("Cleaned flux")
+            axarr[5].title.set_text("An image of the lightcurve  with the first Lomb-Scargle")
+            axarr[5].set_xlabel("Days in BTJD")
+            axarr[5].set_ylabel("Transit width in days")
+            axarr[5].set_aspect("auto")
+            try:
+                axarr[6].plot(t, original_masked_flux + ones, label="masked flux")
+                axarr[6].plot(t, periodicnoise_ls2 + ones, label="periodic noise")
+                axarr[6].legend()
+                axarr[6].set_xlim(np.min(t),np.max(t))
+                axarr[6].title.set_text("Lomb-Scargle applied on masked flux")
+                axarr[7].plot(t, flux + ones, color="tomato",alpha=0.5)
+                axarr[7].scatter(t, flux + ones, color="red",label='original flux',s=3)
+                axarr[7].plot(t, final_flux + ones - 0.002,alpha=0.5,color='cadetblue')
+                axarr[7].scatter(t, final_flux + ones - 0.002, label="final flux",s=3)
+                axarr[7].legend()
+                axarr[7].set_xlim(np.min(t),np.max(t))
+                axarr[7].title.set_text("Cleaned flux")
 
-            im = axarr[7].imshow(
-                T_new,
-                origin="bottom",
-                extent=axarr[3].get_xlim() + (0, 2.5),
-                aspect="auto",
-                cmap="rainbow",
-            )
-            axarr[7].title.set_text("An image of the final lightcurve (second Lomb Scargle)")
+                im = axarr[8].imshow(
+                    T2,
+                    origin="bottom",
+                    extent=(axarr[4].get_xlim()) + (0, 2.5),
+                    aspect="auto",
+                    cmap="rainbow",
+                )
+                axarr[8].title.set_text("An image of the lightcurve  with the second Lomb-Scargle")
+            except: 
+                pass
 
             fig1.colorbar(im, cax=cax)
             fig1.tight_layout()
 
             try:
-                t2, x2, y2, w2, q2 = transit_shape(table,m2,n2,final_flux)
-                axarr[8].plot(t2, x2, t2, y2, t2, w2)
-                axarr[8].set_title("Transit shape in box")
-                axarr[8].set_xlabel("Days in BTJD")
-                axarr[8].set_ylabel("Normalised flux")
+                t2, x2, q2, y2, w2 = info[0],info[1],info[2],info[3],info[4]
+                axarr[9].plot(t2, x2+1) # flux
+                axarr[9].plot(t2,y2+1) # gauss fit
+                axarr[9].plot(t2,w2+1) # comet fit
+                axarr[9].set_title("Transit shape in box")
+                axarr[9].set_xlabel("Days in BTJD")
+                axarr[9].set_ylabel("Normalised flux")
+
             except:
                 pass
-
-
-            try:
-                os.makedirs("plots") # make directory plot if it doesn't exist
-            except FileExistsError:
-                pass
-                
-            fig1.savefig(f'plots/analysis_plot_{tic}.pdf')
+            
+            if twostep:
+                fig1.savefig(f'plots/TIC{tic}_twostep.pdf')  
+            else:
+                fig1.savefig(f'plots/TIC{tic}.pdf')
 
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
@@ -874,47 +858,4 @@ def folders_in(path_to_parent):
         if os.path.isdir(os.path.join(path_to_parent,fname)):
             yield os.path.join(path_to_parent,fname)
 
-def transit_shape(table,m,n,flux):
-    """Calculating the shape of the asymmetric transit given the lightcurve, the parameters of the T statsitic (m and n), and parameters 
-    (mainly the lomb-scargle flux) obtained from `processing`.
-    
-    m: value of the minimum T statistic
-    n: the location of the minimum T statistic if it was *not* a flattened array.
-    params: parameters [A_mag,periodicnoise_ls,flux,flux_ls,T,N,ones] called by index. Only N (params[3]) is used.
-    
 
-    returns:
-    - t2: time values in between box region
-    - x2: flux values in between box region
-    - y2: gaussian curve fit for the dip
-    - w2: a comet curve fit for the dip
-    - q2: quality values in between box region
-
-    note: y2 and w2 are used to determine the asymmetry of the dip, and will be used to calculate an asymmetry score of the dip.
-    """
-
-
-    t,_,quality,_ = clean_data(table)
-    t2 = t[n - 3 * m : n + 3 * m]
-    x2 = flux[n - 3 * m : n + 3 * m]
-    q2 = quality[n - 3 * m : n + 3 * m] # quality points from three transit widths to other edge of three transit widths.
-    background = (sum(x2[: 1 * m]) + sum(x2[5 * m :])) / (2 * m)
-    x2 -= background
-    paramsgauss = single_gaussian_curve_fit(t2, -x2)
-    y2 = -gauss(t2, *paramsgauss)
-    paramscomet = comet_curve_fit(t2, -x2)
-    w2 = -comet_curve(t2, *paramscomet)
-
-    return t2, x2, y2, w2, q2 
-
-def mask_first_lombscargle(flux_ls):
-    """Masks an initial dip if found by the Lomb-Scargle periodogram. 
-    This is to remove smaller astrophysical variability that was not captured the first time of applying the LS periodogram.
-    
-    flux_ls: the flux after the first Lomb-Scargle."""
-
-    min_ind = np.argmin(flux_ls)
-    # this point is the "mid-transit". So create mask = 1 with box 1 day wide
-
-    # 48 cadences a day for 30-min
-    flux_ls[min_ind - 24:min_ind+24] = 0
