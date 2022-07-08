@@ -224,37 +224,6 @@ def import_tasoclightcurve(file_path, drop_bad_points=False, flux='FLUX_CORR',
     scidata = hdulist[1].data
     table = Table(scidata)['TIME','FLUX_CORR','QUALITY']
 
-  
-    #if drop_bad_points:
-    #    bad_points = []
-    #    q_ind = get_quality_indices(table['QUALITY'])
-        
-    #    for j,q in enumerate(q_ind): # j=index, q=quality
-    #        if j+1 not in ok_flags:
-    #            bad_points += q.tolist() # adds bad_points by value of q (the quality indices) and converts to list
-    
-
-        # bad_points = [i for i in range(len(table)) if table[i][2]>0]
-    #    table.remove_rows(bad_points)
-
-
-    # Delete rows containing NaN values. 
-    ## if flux or time columns are NaN's, remove them.
-    #nan_rows = [ i for i in range(len(table)) if
-    #        math.isnan(table[i][1]) or math.isnan(table[i][0]) ]
-
-    #table.remove_rows(nan_rows)
-
-    ## Smooth data by deleting overly 'spikey' points.
-    ### if flux - 0.5*(difference between neihbouring points) > 3*(distance between neighbouring points), spike identified
-    #spikes = [ i for i in range(1,len(table)-1) if \
-    #        abs(table[i][1] - 0.5*(table[i-1][1]+table[i+1][1])) \
-    #        > 3*abs(table[i+1][1] - table[i-1][1])]
-
-    ### flux smoothened out by changing those points to 0.5*distance between neighbouring points
-    #for i in spikes:
-    #    table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
-
     return table
 
 def calculate_timestep(table):
@@ -333,7 +302,7 @@ def fourier_filter(flux,freq_count):
     return flux - fitted_flux
 
 
-def lombscargle_filter(time,flux,real,min_score,plotting=False):
+def lombscargle_filter(time,flux,real,min_score):
     """Also removes periodic noise, using lomb scargle methods."""
     time_real = time[real == 1]
 
@@ -358,13 +327,6 @@ def lombscargle_filter(time,flux,real,min_score,plotting=False):
             del ls
     except:
         pass
-
-    if plotting:
-        plt.figure(figsize=(3,5))
-        plt.plot(freq,powers)
-        plt.title("Lomb-Scargle plot after in-place process")
-        plt.xlabel('frequency')
-        plt.ylabel('Lomb-Scargle power')
 
 def lombscargle_plotting(time,flux,real,min_score):
     time_real = time[real == 1]
@@ -632,19 +594,6 @@ def normalise_lc(flux):
 def remove_zeros(data, flux):
     return data[data[flux] != 0]
 
-def mad_plots(table,array,median,rms,clip,sector,camera):
-    """plots comparisons of MAD at sector camera combination between median, BL's MAD, and statistically clipped MAD"""
-    fig,ax = plt.subplots()
-    ax.scatter(range(0,len(table)), array, s=2)
-    ax.axhline(np.nanmedian(array), c='r',label='median')
-    ax.axhline(np.nanmedian(array)+10*np.std(array[900:950]),c='blue',label='visualised MAD') # [900:950] are generally quiet cadences
-    ax.axhline(median + clip*rms, c='orange',label='Sigma Clipped MAD')
-    ax.set_xlabel('Cadence Number')
-    ax.set_ylabel('Mean Absolute Deviation (MAD)')
-    ax.set_title(f'Cadence at {sector}-{camera}')
-    ax.legend()
-    plt.show()
-
 def processing(table,f_path,make_plots=False,power=0.08,twostep=True): 
 
 
@@ -724,14 +673,8 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=True):
 
         
         try:
-            plt.figure(figsize=(30,5))
-            #plt.plot(t,final_flux)
             asym, width1, width2, info = calc_shape(m,n,t,quality,final_flux) # check why flux; plotting purposes?
             s = classify(m,n,real,asym)
-            plt.plot(t,final_flux-0.002,label='final_flux (after detrending)')
-            plt.plot(t,flux-0.002,label='flux')
-            plt.legend()
-            plt.title('3 transit width')
         except ValueError:
             asym, width1, width2 = calc_shape(m,n,t,quality,final_flux)
             s = classify(m,n,real,asym) 
@@ -842,13 +785,19 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=True):
             except:
                 pass
             
+            del original_masked_flux
+            
             if twostep:
                 fig1.savefig(f'plots/TIC{tic}_twostep.pdf')  
             else:
                 fig1.savefig(f'plots/TIC{tic}.pdf')
+        
 
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
+
+    del final_flux
+    del flux_ls
 
     return result_str
 
