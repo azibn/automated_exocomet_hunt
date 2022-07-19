@@ -90,30 +90,30 @@ m, n = np.unravel_index(
     T.argmin(), T.shape
 )  # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
 
-# minT = T[m, n]
-# minT_time = t[n]
-# minT_flux = flux[n]
-# minT_duration = m * timestep
+minT = T[m, n]
+minT_time = t[n]
+minT_flux = flux[n]
+minT_duration = m * timestep
 
-masked_flux = np.copy(flux)
-masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  # 2x width of dip
+# masked_flux = np.copy(flux)
+# masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  # 2x width of dip
 
-original_masked_flux = np.copy(masked_flux)
-lombscargle_filter(t, masked_flux, real, 0.08)
-periodicnoise_ls2 = original_masked_flux - masked_flux
-masked_flux = masked_flux * real
-final_flux = flux - periodicnoise_ls2
-final_flux = final_flux * real
+# original_masked_flux = np.copy(masked_flux)
+# lombscargle_filter(t, masked_flux, real, 0.08)
+# periodicnoise_ls2 = original_masked_flux - masked_flux
+# masked_flux = masked_flux * real
+# final_flux = flux - periodicnoise_ls2
+# final_flux = final_flux * real
 
-T_new = test_statistic_array(final_flux, 60 * factor)
-data_nonzeroT = nonzero(T_new)
+# T_new = test_statistic_array(final_flux, 60 * factor)
+# data_nonzeroT = nonzero(T_new)
 
-m2, n2 = np.unravel_index(T_new.argmin(), T_new.shape)
+# m2, n2 = np.unravel_index(T_new.argmin(), T_new.shape)
 
-minT = T_new[m2, n2]
-minT_time = t[n2]
-minT_flux = flux[n2]
-minT_duration = m2 * timestep
+# minT = T_new[m2, n2]
+# minT_time = t[n2]
+# minT_flux = flux[n2]
+# minT_duration = m2 * timestep
 
 print("Timestep of lightcurve: ", round(timestep * 1440, 3), "minutes.")
 print("Maximum transit chance:")
@@ -122,20 +122,20 @@ print("   Duration =", round(minT_duration, 2), "days.")
 print("   T =", round(minT, 1))
 print("   T/sigma =", round(minT / data_nonzeroT.std(), 1))
 
-trans_start = n2 - math.floor((m2 - 1) / 2)
-trans_end = trans_start + m2
+trans_start = n - math.floor((m - 1) / 2)
+trans_end = trans_start + m
 print("Transit depth =", round(flux[trans_start:trans_end].mean(), 6))
 
 # Transit shape calculation
 if (
-    n2 - 3 * m2 >= 0 and n2 + 3 * m2 < N
+    n - 3 * m >= 0 and n + 3 * m < N
 ):  # m: width of point(s) in lc. first part: 3 transit widths away from first data point. last part: not more than 3 transit widths away.
-    t2 = t[n2 - 3 * m2 : n2 + 3 * m2]
-    x2 = final_flux[n2 - 3 * m2 : n2 + 3 * m2]
+    t2 = t[n - 3 * m : n + 3 * m]
+    x2 = final_flux[n - 3 * m : n + 3 * m]
     q2 = quality[
-        n2 - 3 * m2 : n2 + 3 * m2
+        n - 3 * m : n + 3 * m
     ]  # quality points from three transit widths to other edge of three transit widths.
-    background = (sum(x2[: 1 * m2]) + sum(x2[5 * m2 :])) / (2 * m2)
+    background = (sum(x2[: 1 * m]) + sum(x2[5 * m :])) / (2 * m)
     x2 -= background
     paramsgauss = single_gaussian_curve_fit(t2, -x2)
     y2 = -gauss(t2, *paramsgauss)
@@ -151,8 +151,8 @@ if (
     print("Quality flags:", qual_flags)
 
 # Classify events
-asym= calc_shape(m2, n2, t, quality, flux)
-print(classify(m2, n2, real, asym))
+asym= calc_shape(m, n, t, quality, flux)
+print(classify(m, n, real, asym))
 
 
 

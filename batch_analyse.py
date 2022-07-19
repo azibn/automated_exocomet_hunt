@@ -2,8 +2,7 @@
 # First have to disable inbuilt multithreading for performance reasons.
 import os
 
-# import pandas as pd
-os.nice(8)
+# os.nice(8)
 os.environ["OMP_NUM_THREADS"] = "1"
 from analysis_tools_cython import *
 import multiprocessing
@@ -11,7 +10,6 @@ import sys
 import traceback
 import argparse
 import tqdm
-import data
 import glob
 import loaders
 import warnings
@@ -43,12 +41,16 @@ parser.add_argument(
     default=3,
     type=int,
 )
-parser.add_argument("-ls", help="Lomb-Scargle power", default=0.10, dest="ls")
-parser.add_argument("-step", help="default twostep", dest="step",action="store_false")
+
+parser.add_argument("-step", help="default twostep", dest="step", action="store_false")
 parser.add_argument("-p", help="enable plotting", action="store_true")
+parser.add_argument("-n", help="set niceness", dest="n", default=8, type=int)
 
 # Get directories from command line arguments.
 args = parser.parse_args()
+
+# set niceness
+os.nice(args.n)
 
 paths = []
 for path in args.path:
@@ -60,42 +62,51 @@ m = multiprocessing.Manager()
 lock = m.Lock()
 
 
-def mission_lightcurves(f_path):
+def run_lc(f_path):
     try:
         f = os.path.basename(f_path)
-        print(f)
-        table = import_lightcurve(f_path, flux=args.f, drop_bad_points=args.q)
-        result_str = processing(table,f_path, make_plots=args.p, power=args.ls,twostep=args.step)
+        print(f_path)
+        if f_path.endswith(".pkl"):
+            table, lc_info = import_XRPlightcurve(
+                f_path, sector=sector, clip=args.c, drop_bad_points=args.q
+            )
+            table = table["time", args.f, "quality"]
+        else:
+            table, lc_info = import_lightcurve(
+                f_path, flux=args.f, drop_bad_points=args.q
+            )
+        lc_info = " ".join([str(i) for i in lc_info])
+        result_str = processing(table, f_path, make_plots=args.p, twostep=args.step)
         try:
             os.makedirs("output_log")  # make directory plot if it doesn't exist
         except FileExistsError:
             pass
-        lock.acquire()
-        with open(os.path.join("output_log/", args.of), "a") as out_file:
-            out_file.write(result_str + "\n")
-        lock.release()
-    except (KeyboardInterrupt, SystemExit):
-        print("Process terminated early, exiting", file=sys.stderr)
-        raise
-    except Exception as e:
-        print("\nError with file " + f_path, file=sys.stderr)
-        traceback.print_exc()
-
-
-def xrp_lightcurves(f_path):
-    try:
-        f = os.path.basename(f_path)
-        print(f_path)
-        table = import_XRPlightcurve(f_path, sector=sector, clip=args.c)[0]
-        table = table["time", args.f, "quality"]
-        result_str = processing(table, f_path, make_plots=args.p, power=args.ls,twostep=args.step)
-        lock.acquire()
         try:
-            os.makedirs("output_log_xrp")  # makes directory plot if it doesn't exist
+            os.makedirs("lightcurve_info")
         except FileExistsError:
             pass
-        with open(os.path.join("output_log_xrp/", args.of), "a") as out_file:
-            out_file.write(result_str + "\n")
+        lock.acquire()
+        if f_path.endswith(".pkl"):
+            with open(os.path.join("output_log_xrp/", args.of), "a") as out_file:
+                out_file.write(result_str + "\n")
+
+            with open(
+                os.path.join(
+                    "lightcurve_info/", f"xrp_lightcurve_info_sector_{sector}"
+                ),
+                "a",
+            ) as out_file_2:
+                out_file_2.write(lc_info + "\n")
+        else:
+            with open(os.path.join("output_log/", args.of), "a") as out_file:
+                out_file.write(result_str + "\n")
+
+            with open(
+                os.path.join("lightcurve_info/", f"lightcurve_info_sector_{sector}"),
+                "a",
+            ) as out_file_2:
+                out_file_2.write(lc_info + "\n")
+
         lock.release()
     except (KeyboardInterrupt, SystemExit):
         print("Process terminated early, exiting", file=sys.stderr)
@@ -104,30 +115,6 @@ def xrp_lightcurves(f_path):
         print("\nError with file " + f_path, file=sys.stderr)
         traceback.print_exc()
 
-def single_file(f_path):
-    try:
-        f = os.path.basename(f_path)
-        print(f_path)
-        if (os.path.split(args.fits_file[0])[1].startswith("kplr")) or (
-            os.path.split(args.fits_file[0])[1].startswith("hlsp_tess")
-            and os.path.split(args.fits_file[0])[1].endswith("fits")
-        ):  # or os.path.split(args.fits_file[0])[1].startswith("tess") and os.path.split(args.fits_file[0])[1].endswith("fits")):
-            table = import_lightcurve(args.fits_file[0])
-            t, flux, quality, real = clean_data(table)
-        else:
-            table = import_XRPlightcurve(f_path, sector=sector_test, clip=args.c)[0]
-            table = table["time", args.f, "quality"]
-        result_str = processing(table, f_path, make_plots=args.p)
-        # lock.acquire()
-        # with open(args.of,'a') as out_file:
-        #    out_file.write(result_str+'\n')
-        # lock.release()
-    except (KeyboardInterrupt, SystemExit):
-        print("Process terminated early, exiting", file=sys.stderr)
-        raise
-    except Exception as e:
-        print("\nError with file " + f_path, file=sys.stderr)
-        traceback.print_exc()
 
 if __name__ == "__main__":
 
@@ -136,37 +123,29 @@ if __name__ == "__main__":
 
     for path in paths:
         if not os.path.isdir(path):
-            # df = pd.read_csv(path)
-            # path_to_dir = f'/storage/astro2/phrdhx/tesslcs/tesslcs_sector_{sector}_104/'
-            # for i in df:
-            #     files = glob.glob(os.path.join(path_to_dir, "**/*.pkl"))
-            #     print(files)
 
             print(path, "not a directory, skipping.", file=sys.stderr)
             continue
 
         # if we are in the lowest subdirectory, perform glob this way.
         if not list(folders_in(path)):
-            print("this is the lowest subdirectory")
+            print("this is the lowest subdirectory. running the search...")
 
             # this should work for both Kepler and TESS fits files.
             fits_files = glob.glob(os.path.join(path, "*lc.fits"))
             pkl_files = glob.glob(os.path.join(path, "*.pkl"))
 
-            pool.map(mission_lightcurves, fits_files)
-            pool.map(xrp_lightcurves, pkl_files)
+            pool.map(run_lc, pkl_files)
+            pool.map(run_lc, fits_files)
 
         else:
             print("globbing subdirectories")
 
             # Start at Sector directory, glob goes through `target/000x/000x/xxxx/**/*lc.fits`
-            fits_files = sorted(glob.glob(os.path.join(path, "target/**/**/**/**/*lc.fits")))
- 
-            # These are test SPOC files that I have in my home CSC directory
-            # test_fits = glob.glob(os.path.join(path,'**/**/*lc.fits'))
+            fits_files = glob.glob(os.path.join(path, "target/**/**/**/**/*lc.fits"))
+            pkl_files = glob.glob(os.path.join(path, "**/*.pkl"))
 
-            # Starts at sector directory. globs files in one subdirectory level below
-            pkl_files = sorted(glob.glob(os.path.join(path, "**/*.pkl")))
+            print("running the search...")
 
-            pool.map(xrp_lightcurves, pkl_files)
-            pool.map(mission_lightcurves, fits_files)
+            pool.map(run_lc, pkl_files)
+            pool.map(run_lc, fits_files)

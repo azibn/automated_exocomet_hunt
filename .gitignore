@@ -1,6 +1,9 @@
 # Build files
 analysis_tools_cython.c*
 build
+.nfs00000000027697d50000005e
+.nfs00000000028f4f1f0000012e
+.vscode/
 
 # old Kepler files
 archive_analyse.sh
@@ -16,7 +19,8 @@ gif/
 mad_figs
 
 # output files
-output_s*
+output*
+plot*
 
 # batch_analyse_v2
 batch_reanalyse_asym.py
@@ -27,7 +31,7 @@ batch_reanalyse_asym.py
 # other
 .DS_Store
 .ipynb_checkpoints/
-
+test_lightcurves/
 .idea/
 Kepler/
 __pycache__/
@@ -39,7 +43,7 @@ tess/
 MAD figs/
 Notebooks/mastDownload
 kplr003542116-2012088054726_llc.fits
-notebooks/Untitled.ipynb
+notebooks/
 old_kepler_files/
 tess2018206190142-s0001-s0006-0000000270577175-00196_dvt.fits
 7175/
@@ -50,3 +54,6 @@ sky_positions.py
 test.csv
 tic_ra_dec.py
 # data
+
+s6_tmag4_5.png
+s6_tmag_7_8.png

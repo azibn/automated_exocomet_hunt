@@ -14,6 +14,7 @@ dependencies:
   - matplotlib
   - numba
   - numexpr
+  - numpy
   - pandas
   - scikit-learn
   - scipy
@@ -27,3 +28,4 @@ dependencies:
     - eleanor
     - kplr
     - markupsafe==2.0.1
+    - wotan

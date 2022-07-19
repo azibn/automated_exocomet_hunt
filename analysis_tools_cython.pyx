@@ -4,10 +4,12 @@ from astropy.io import fits
 from astropy.table import Table
 from astropy.stats import sigma_clip, sigma_clipped_stats
 from scipy.optimize import curve_fit
+from scipy.signal import savgol_filter
 from astropy.timeseries import LombScargle
 import numpy as np
 cimport numpy as np
 import math
+import eleanor
 import sys,os
 import kplr
 import data
@@ -39,7 +41,21 @@ def download_lightcurve(file, path='.'):
     _ = lcs[i].open() # force download
     return lcs[i].filename
 
-def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],return_type='astropy'):
+def import_eleanor(tic,sector=None):
+    """Converting eleanor lightcurves to dataframes to work with our pipeline
+    tic: TIC ID
+    sector: sector of target. If none is specified, eleanor will download the latest observation.
+    returns:
+        - df: dataframe of the eleanor target
+    """
+    star = eleanor.Source(tic=tic, sector=sector)
+    data = eleanor.TargetData(star, height=15, width=15, bkg_size=31, do_psf=False, do_pca=True, regressors='corner')
+    df = pd.DataFrame([data.time,data.corr_flux,data.quality]).T
+    columns =['time','corrected flux','quality']
+    df.columns = columns
+    return df
+
+def import_XRPlightcurve(file_path,sector: int,clip=3,flux=None,drop_bad_points=True,ok_flags=[],return_type='astropy'):
     """
     file_path: path to file (takes pkl and csv)
     sector = lightcurve sector
@@ -60,7 +76,8 @@ def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],
         for i in range(len(lc)):
             if isinstance(lc[i], np.ndarray):
                 lc[i] = pd.Series(lc[i])
-        for_df = lc[6:]  # TIC ID, RA, DEC, TESS magnitude, Camera, Chip
+        for_df = lc[6:]  # TIC ID, RA, DEC, TESS magnitude, Camera, Chip not included
+
         columns = [
             "time",
             "raw flux",
@@ -71,16 +88,17 @@ def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],
         ]
         df = pd.DataFrame(data=for_df).T 
         df.columns = columns
+        info = lc[0:6].append(sector)
+
     else:
-        for_df = pd.read_csv(file_path)
-        columns = [
-        "time", 
-        "corrected flux",
-        "quality"
-        ]
-        df = pd.DataFrame(data=for_df)
+        # think about how many tic id's will be here; should there be a for loop to iterate etc?
+        tic = pd.read_csv(file_path)
+        star = eleanor.Source(tic=tic, sector=sector) # specifies sector. If you want the latest sector, sector=None
+        api_data = eleanor.TargetData(star, height=15, width=15, bkg_size=31, do_psf=False, do_pca=True, regressors='corner')
+        df = pd.DataFrame([api_data.time,api_data.corr_flux,api_data.quality]).T
+        columns = ['time','corrected flux','quality']
         df.columns = columns
-    
+
 
     table = Table.from_pandas(df)
 
@@ -91,6 +109,7 @@ def import_XRPlightcurve(file_path,sector,clip,drop_bad_points=True,ok_flags=[],
     # loading MAD 
     mad_df = data.load_mad()
     sec = sector
+
     camera = lc[4]
     mad_arr = mad_df.loc[:len(table)-1,f"{sec}-{camera}"]
     sig_clip = sigma_clip(mad_arr,sigma=clip,masked=True)
@@ -159,22 +178,28 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
         print("Import failed: file not found")
         return
 
+    objdata = hdulist[0].header
     scidata = hdulist[1].data
+  
     try:
         if 'kplr' in file_path:
             table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+            info = [objdata['OBJECT'],objdata['KEPLERID'],objdata['KEPMAG'],objdata['QUARTER'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
         elif 'tasoc' in file_path:
             table = Table(scidata)['TIME','FLUX_CORR','QUALITY']
         else:
         #elif 'tess' in file_path:
             #try:
             table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
+            info = [objdata['OBJECT'],objdata['TICID'],objdata['TESSMAG'],objdata['SECTOR'],objdata['CAMERA'],objdata['CCD'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
             #except:
             #    time = scidata.TIME
             #    flux = scidata.PDCSAP_FLUX
             #    quality = scidata.QUALITY
     except:
         table = Table(scidata)['TIME','SAP_FLUX','QUALITY']
+    
+    hdulist.close()
     
     if drop_bad_points:
         bad_points = []
@@ -209,7 +234,7 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
     for i in spikes:
         table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
 
-    return table
+    return table, info
 
 
 def import_tasoclightcurve(file_path, drop_bad_points=False, flux='FLUX_CORR',
@@ -625,7 +650,8 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=True):
 
 
         # first Lomb-Scargle
-        flux_ls = np.copy(flux) 
+        flux_ls = np.copy(flux)
+        #flux_ls =  savgol_filter(flux_ls,145,2)
         lombscargle_filter(t,flux_ls,real,power) 
         periodicnoise_ls = flux - flux_ls 
         flux_ls = flux_ls * real 
@@ -753,8 +779,8 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=True):
                 axarr[6].title.set_text("Lomb-Scargle applied on masked flux")
                 axarr[7].plot(t, flux + ones, color="tomato",alpha=0.5)
                 axarr[7].scatter(t, flux + ones, color="red",label='original flux',s=3)
-                axarr[7].plot(t, final_flux + ones - 0.002,alpha=0.5,color='cadetblue')
-                axarr[7].scatter(t, final_flux + ones - 0.002, label="final flux",s=3)
+                axarr[7].plot(t, final_flux + ones - 0.003,alpha=0.5,color='cadetblue')
+                axarr[7].scatter(t, final_flux + ones - 0.003, label="final flux",s=3)
                 axarr[7].legend()
                 axarr[7].set_xlim(np.min(t),np.max(t))
                 axarr[7].title.set_text("Cleaned flux")

@@ -16,13 +16,8 @@ def get_output(file_path):
     """
     df = pd.read_csv(file_path,sep=' ',header=None)
 
-    # with open(file_path) as f:
-    #     lines = f.readlines()
-    # lc_lists = [word for line in lines for word in line.split()]
-    # lc_lists = [lc_lists[i : i + 11] for i in range(0, len(lc_lists), 11)]
     cols = [
         "file",
-        "tmag",
         "signal",
         "signal/noise",
         "time",
@@ -37,7 +32,7 @@ def get_output(file_path):
     return df
 
 
-def get_lightcurves(data, storage_path, sec, mad_df, plots=False, clip=4):
+def get_lightcurves(data, storage_path, sec,plots=False, clip=3):
     """Uses dataframe obtained from `get_output` to retrieve the xrp lightcurves of desired TIC object.
 
     Notes: `mad_df` must be called separately in the script/notebook.
@@ -50,7 +45,7 @@ def get_lightcurves(data, storage_path, sec, mad_df, plots=False, clip=4):
         - Top left: the MAD array
     """
     for i in data.file:
-        file_paths = glob.glob(os.path.join(storage_path, f"**/**/{i}"))[0]
+        file_paths = glob.glob(os.path.join(storage_path, f"**/{i}"))[0]
         table, info = import_XRPlightcurve(
             file_paths, sector=sec, clip=clip, drop_bad_points=True
         )
@@ -67,7 +62,7 @@ def get_lightcurves(data, storage_path, sec, mad_df, plots=False, clip=4):
             rms_sig_clip = np.nanstd(sig_clip)
 
             # fig,(ax1,ax2,ax3,ax4) = plt.subplots(4,figsize=(15,8))
-            fig = plt.figure(figsize=(10, 4))
+            fig = plt.figure(figsize=(10, 4))  
             ax1 = fig.add_subplot(221)
             ax1.scatter(range(0, len(table["time"])), mad_arr, s=2)
             ax1.axhline(np.nanmedian(mad_arr), c="r", label="median line")
@@ -101,7 +96,7 @@ def get_lightcurves(data, storage_path, sec, mad_df, plots=False, clip=4):
             fig.suptitle(f"TIC {tic}", fontsize=16, y=1.05)
 
 
-def filter_df(df, min_asym_score=1.0, max_asym_score=2.0, duration=0.5, signal=-5.0):
+def filter_df(df, min_asym_score=-0.5, max_asym_score=2.0, duration=0.5):
     """filters df for given parameter range.
     Default settings:
     - `signal/noise` greater than 5.
@@ -111,7 +106,7 @@ def filter_df(df, min_asym_score=1.0, max_asym_score=2.0, duration=0.5, signal=-
     """
     return df[
         (df.duration >= duration)
-        & (df["signal/noise"] <= signal)
+        #& (df["signal/noise"] <= signal)
         & (df["asym_score"] >= min_asym_score)
         & (df["asym_score"] <= max_asym_score)
     ]
