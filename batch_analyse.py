@@ -149,3 +149,5 @@ if __name__ == "__main__":
 
             pool.map(run_lc, pkl_files)
             pool.map(run_lc, fits_files)
+
+## trying a piece of code here. please work
