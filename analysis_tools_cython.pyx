@@ -6,6 +6,7 @@ from astropy.stats import sigma_clip, sigma_clipped_stats
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 from astropy.timeseries import LombScargle
+from wotan import flatten
 import numpy as np
 cimport numpy as np
 import math
@@ -619,8 +620,8 @@ def normalise_lc(flux):
 def remove_zeros(data, flux):
     return data[data[flux] != 0]
 
-def processing(table,f_path,make_plots=False,power=0.08,twostep=True): 
-
+def processing(table,f_path,method,make_plots=False,power=0.08,twostep=False): 
+    
 
     f = os.path.basename(f_path)
     if f.endswith('.pkl'):
@@ -647,17 +648,17 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=True):
         # periodicnoise = flux - filteredflux
 
         #sigma = flux.std()
-
+        flattened_flux,trend_lc = flatten(time=t,flux=flux,method=method,window_length=2,return_trend=True)
 
         # first Lomb-Scargle
         flux_ls = np.copy(flux)
         #flux_ls =  savgol_filter(flux_ls,145,2)
-        lombscargle_filter(t,flux_ls,real,power) 
-        periodicnoise_ls = flux - flux_ls 
-        flux_ls = flux_ls * real 
+        #lombscargle_filter(t,flux_ls,real,power) 
+        #periodicnoise_ls = flux - flux_ls 
+        #flux_ls = flux_ls * real 
 
         freq, powers = LombScargle(t,flux).autopower()
-        T1 = test_statistic_array(flux_ls,60 * factor)
+        T1 = test_statistic_array(flattened_flux,60 * factor)
         Ts = nonzero(T1).std()
 
         m, n = np.unravel_index(
@@ -745,7 +746,7 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=True):
             axarr[2].set_xlabel("frequency")
             axarr[2].set_ylabel("Lomb-Scargle power")
             axarr[3].plot(t, flux, label="flux")
-            axarr[3].plot(t, periodicnoise_ls, label="periodic noise")
+            #axarr[3].plot(t, periodicnoise_ls, label="periodic noise")
             axarr[3].set_xlim(np.min(t),np.max(t))
             axarr[3].title.set_text("Original lightcurve and the periodic noise")
             axarr[3].set_xlabel("Days in BTJD")

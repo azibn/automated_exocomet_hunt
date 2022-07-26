@@ -54,6 +54,6 @@ sky_positions.py
 test.csv
 tic_ra_dec.py
 # data
-
+lightcurve_info/
 s6_tmag4_5.png
 s6_tmag_7_8.png
