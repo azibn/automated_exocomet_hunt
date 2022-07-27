@@ -18,6 +18,18 @@ Alternatively, you can try this:
  
 Different package versions may cause conflicts, so it is recommended to run this code using the virtual environment setup placed above. 
 
+### Don't forget about mamba!
+
+Mamba is the conda package manager reimplemented in C++ for faster outputs. One can do
+
+```conda install mamba -n base -c conda-forge```
+
+to the base environment and then 
+
+```mamba env create -f environment.yml```
+
+`conda` commands will also work with mamba, eg: `conda activate <env>`.
+
 ## Usage
 
 These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves
