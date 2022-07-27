@@ -22,7 +22,9 @@ parser.add_argument("-n", help="No graphical output", action="store_true")
 parser.add_argument(
     "-q", help="Keep only points with SAP_QUALITY=0", action="store_true"
 )
-parser.add_argument("-s", help="TESS sector for XRP lightcurves",dest="sector",default=6)
+parser.add_argument(
+    "-s", help="TESS sector for XRP lightcurves", dest="sector", default=6
+)
 
 
 args = parser.parse_args()
@@ -151,9 +153,8 @@ if (
     print("Quality flags:", qual_flags)
 
 # Classify events
-asym= calc_shape(m, n, t, quality, flux)
+asym = calc_shape(m, n, t, quality, flux)
 print(classify(m, n, real, asym))
-
 
 
 fig1, axarr = plt.subplots(8, figsize=(13, 22))
@@ -242,5 +243,8 @@ except FileExistsError:
 
 try:
     fig1.savefig(f"figs_single_analysis/plots_TIC{lc_info[0]}", dpi=300)
-except: 
-    fig1.savefig(f"figs_single_analysis/plots_{args.file[0].split('/')[-1].split('.fits')[0]}", dpi=300)
+except:
+    fig1.savefig(
+        f"figs_single_analysis/plots_{args.file[0].split('/')[-1].split('.fits')[0]}",
+        dpi=300,
+    )

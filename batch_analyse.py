@@ -45,7 +45,13 @@ parser.add_argument(
 parser.add_argument("-step", help="default twostep", dest="step", action="store_false")
 parser.add_argument("-p", help="enable plotting", action="store_true")
 parser.add_argument("-n", help="set niceness", dest="n", default=8, type=int)
-parser.add_argument("-m", help="set smoothing method from wotan. default is lowess method", dest="m", default='lowess')
+parser.add_argument(
+    "-m",
+    help="set smoothing method from wotan. default is lowess method",
+    dest="m",
+    default="lowess",
+    type=str,
+)
 
 # Get directories from command line arguments.
 args = parser.parse_args()
@@ -60,9 +66,9 @@ for path in args.path:
 ## Prepare multithreading.
 
 try:
-   multiprocessing.set_start_method('fork')  # default for >=3.8 is spawn
-except RuntimeError: # there might be a timeout sometimes. 
-   pass
+    multiprocessing.set_start_method("fork")  # default for >=3.8 is spawn
+except RuntimeError:  # there might be a timeout sometimes.
+    pass
 
 m = multiprocessing.Manager()
 lock = m.Lock()
@@ -82,7 +88,9 @@ def run_lc(f_path):
                 f_path, flux=args.f, drop_bad_points=args.q
             )
         lc_info = " ".join([str(i) for i in lc_info])
-        result_str = processing(table, f_path, method=args.m,make_plots=args.p, twostep=args.step)
+        result_str = processing(
+            table, f_path, method=args.m, make_plots=args.p, twostep=args.step
+        )
         try:
             os.makedirs("output_log")  # make directory plot if it doesn't exist
         except FileExistsError:
@@ -125,7 +133,7 @@ def run_lc(f_path):
 if __name__ == "__main__":
 
     if "sector" in args.path:
-        sector = int(os.path.split(args.path[0])[0].split('_')[-2])
+        sector = int(os.path.split(args.path[0])[0].split("_")[-2])
     else:
         sector = int(input("Sector? "))
 
