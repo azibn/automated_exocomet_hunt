@@ -11,6 +11,7 @@ dependencies:
   - celerite
   - cython
   - jupyterlab
+  - mamba
   - matplotlib
   - numba
   - numexpr
@@ -19,6 +20,7 @@ dependencies:
   - scikit-learn
   - scipy
   - seaborn
+  - tensorflow
   - tk
   - tqdm
   - pickle5

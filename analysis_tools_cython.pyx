@@ -620,7 +620,36 @@ def normalise_lc(flux):
 def remove_zeros(data, flux):
     return data[data[flux] != 0]
 
-def processing(table,f_path,method,make_plots=False,power=0.08,twostep=False): 
+def smoothing(t,flux,method=3,wotan_method='lowess'):
+    """
+    1: Lomb-Scargle
+    2: Two-step Lomb-Scargle
+    3: wotan tool: default lowess
+    
+    """
+    if method != 3: # this block of code is the same for methods 1 and 2
+        flux = normalise_flux(flux)
+        flux_ls = np.copy(flux)
+        lombscargle_filter(t,flux_ls,real,power) 
+        periodicnoise_ls = flux - flux_ls 
+        flux_ls = flux_ls * real
+        if method == 1: 
+            return flux_ls, periodicnoise_ls # returns one-step Lomb Scargle
+        elif method == 2:
+            masked_flux = np.copy(flux)
+            masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  # placeholder. need to change to match duration
+            original_masked_flux = np.copy(masked_flux)
+            lombscargle_filter(t, masked_flux, real, power)
+            periodicnoise_ls2 = original_masked_flux - masked_flux
+            masked_flux = masked_flux * real
+            final_flux = flux - periodicnoise_ls2
+            final_flux = final_flux * real
+            return final_flux, periodicnoise_ls2, flux_ls, periodicnoise_ls # returns two-step Lomb Scargle
+    elif method == 3:
+        flattened_flux, trend_flux = flatten(time=t,flux=flux,method=wotan_method,window_length=2.5,return_trend=True)
+        return flattened_flux, trend_flux
+
+def processing(table,f_path,make_plots=False,power=0.08,twostep=False): 
     
 
     f = os.path.basename(f_path)
@@ -628,6 +657,9 @@ def processing(table,f_path,method,make_plots=False,power=0.08,twostep=False):
         tic = f.split('_')[-1].split('.pkl')[0] # eleanor
     elif "spoc" in f:
         tic = f.split('_')[-5]
+    else:
+        print("TIC ID unidentified. Stopping...")
+        break
 
     
     if len(table) > 120: # 120 represents 2.5 days
@@ -643,22 +675,25 @@ def processing(table,f_path,method,make_plots=False,power=0.08,twostep=False):
         #real = real[np.array(real,dtype=bool)]
         N = len(t)
         ones = np.ones(N)
-        flux = normalise_flux(flux)
-        A_mag = np.abs(np.fft.rfft(flux))
+        #flux = normalise_flux(flux)
+        A_mag = np.abs(np.fft.rfft(normalise_flux(flux)))
         # periodicnoise = flux - filteredflux
 
-        #sigma = flux.std()
-        flattened_flux,trend_lc = flatten(time=t,flux=flux,method=method,window_length=2,return_trend=True)
-
         # first Lomb-Scargle
-        flux_ls = np.copy(flux)
+        #flux_ls = np.copy(flux)
         #flux_ls =  savgol_filter(flux_ls,145,2)
         #lombscargle_filter(t,flux_ls,real,power) 
         #periodicnoise_ls = flux - flux_ls 
         #flux_ls = flux_ls * real 
 
         freq, powers = LombScargle(t,flux).autopower()
-        T1 = test_statistic_array(flattened_flux,60 * factor)
+        if twostep:
+            final_flux, smoothing_func, flux_ls, first_smoothing_func = smoothing(t,flux,method=2)
+        else:
+            final_flux, smoothing_func = smoothing(t,flux,method=3) # default
+
+
+        T1 = test_statistic_array(final_flux,60 * factor)
         Ts = nonzero(T1).std()
 
         m, n = np.unravel_index(
@@ -670,21 +705,19 @@ def processing(table,f_path,method,make_plots=False,power=0.08,twostep=False):
         Tm_start = n-math.floor((m-1)/2)
         Tm_end = Tm_start + m
         Tm_depth = flux[Tm_start:Tm_end].mean() 
-        final_flux = flux_ls.copy() # for plot matching purposes
+        #final_flux = flux_ls.copy() # for plot matching purposes
 
         # Second Lomb-Scargle
         if twostep:
-            masked_flux = np.copy(flux)
-            masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  # placeholder. need to change to match duration
-            original_masked_flux = np.copy(masked_flux)
-            lombscargle_filter(t, masked_flux, real, power)
-            periodicnoise_ls2 = original_masked_flux - masked_flux
-            masked_flux = masked_flux * real
-            final_flux = flux - periodicnoise_ls2
-            final_flux = final_flux * real
-
-
-            #freq, powers = lombscargle_plotting(t, flux_ls, real, power)
+            #masked_flux = np.copy(flux)
+            #masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  # placeholder. need to change to match duration
+            #original_masked_flux = np.copy(masked_flux)
+            #periodicnoise_ls2 = original_masked_flux - masked_flux
+            ##lombscargle_filter(t, masked_flux, real, power)
+            #masked_flux = masked_flux * real
+            #final_flux = flux - periodicnoise_ls2
+            #final_flux = final_flux * real
+            final_flux = smoothing(t,flux,method=2)
             T2 = test_statistic_array(final_flux, 60 * factor)
             
             Ts = nonzero(T2).std()
@@ -697,8 +730,6 @@ def processing(table,f_path,method,make_plots=False,power=0.08,twostep=False):
             Tm_start = n-math.floor((m-1)/2)
             Tm_end = Tm_start + m
             Tm_depth = flux[Tm_start:Tm_end].mean() 
-
-        
         try:
             asym, width1, width2, info = calc_shape(m,n,t,quality,final_flux) # check why flux; plotting purposes?
             s = classify(m,n,real,asym)
@@ -746,13 +777,13 @@ def processing(table,f_path,method,make_plots=False,power=0.08,twostep=False):
             axarr[2].set_xlabel("frequency")
             axarr[2].set_ylabel("Lomb-Scargle power")
             axarr[3].plot(t, flux, label="flux")
-            #axarr[3].plot(t, periodicnoise_ls, label="periodic noise")
+            axarr[3].plot(t, smoothing_func, label="periodic noise")
             axarr[3].set_xlim(np.min(t),np.max(t))
-            axarr[3].title.set_text("Original lightcurve and the periodic noise")
+            axarr[3].title.set_text("Original lightcurve and the smoothing plot")
             axarr[3].set_xlabel("Days in BTJD")
             axarr[3].set_ylabel("Normalised flux")
             axarr[3].legend(loc="lower left")
-            axarr[4].plot(t, flux_ls)  # lomb-scargle plot
+            axarr[4].plot(t, final_flux)  # lomb-scargle plot
             axarr[4].set_xlim(np.min(t),np.max(t))
 
             # axarr[4].plot(m,marker='o')
@@ -772,6 +803,9 @@ def processing(table,f_path,method,make_plots=False,power=0.08,twostep=False):
             axarr[5].set_xlabel("Days in BTJD")
             axarr[5].set_ylabel("Transit width in days")
             axarr[5].set_aspect("auto")
+
+            ## if two step lomb scargle, add subplots ...                
+
             try:
                 axarr[6].plot(t, original_masked_flux + ones, label="masked flux")
                 axarr[6].plot(t, periodicnoise_ls2 + ones, label="periodic noise")

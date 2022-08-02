@@ -17,6 +17,8 @@ betapic/
 kepler/
 gif/
 mad_figs
+lightcurves/
+lightcurves_s1/
 
 # output files
 output*
