@@ -663,7 +663,7 @@ def processing(table,f_path,make_plots=False,twostep=False):
     elif "spoc" in f:
         tic = f.split('_')[-5]
     elif "kplr" in f:
-        tic = f.split('-')[4:] # should be kepler id, for sake of convenience later keeping variable named as tic
+        tic = f.split('/')[-1].split('-')[0][4:] # should be kepler id, for sake of convenience later keeping variable named as tic
     else:
         print("TIC ID unidentified. Stopping...")
         return
