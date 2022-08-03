@@ -619,7 +619,7 @@ def normalise_lc(flux):
 def remove_zeros(data, flux):
     return data[data[flux] != 0]
 
-def smoothing(table,method=2,wotan_method='lowess'):
+def smoothing(table,method=2,wotan_method='lowess',power=0.08):
     """
     1 Lomb-Scargle: first Lomb-Scargle. If twostep Lomb-Scargle desired, process will happen later in the pipeline.
     2 wotan tool: default lowess
@@ -630,9 +630,9 @@ def smoothing(table,method=2,wotan_method='lowess'):
     if method != 2: # this block of code is the same for methods 1 and 2
         flux = normalise_flux(flux)
         flux_ls = np.copy(flux)
-        lombscargle_filter(t,flux_ls,real,0.08) 
+        lombscargle_filter(t,flux_ls,real,power) 
         periodicnoise_ls = flux - flux_ls 
-        flux_ls *= real
+        flux_ls = flux_ls * real
         return flux_ls, periodicnoise_ls # returns one-step Lomb Scargle
     elif method == 2:
         # not normalised because wotan flatten will normalise it
@@ -643,11 +643,11 @@ def smoothing(table,method=2,wotan_method='lowess'):
         return
 
 
-def smoothing_twostep(t,timestep,real,flux,m,n):
+def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     masked_flux = np.copy(flux)
     masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  
     original_masked_flux = np.copy(masked_flux)
-    lombscargle_filter(t, masked_flux, real, 0.08)
+    lombscargle_filter(t, masked_flux, real, power)
     periodicnoise_ls2 = original_masked_flux - masked_flux
     masked_flux = masked_flux * real
     final_flux = (flux - periodicnoise_ls2) * real
