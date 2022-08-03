@@ -613,44 +613,49 @@ def get_quality_indices(sap_quality):
 
     return q_indices
 
-
 def normalise_lc(flux):
     return flux/flux.mean()
 
 def remove_zeros(data, flux):
     return data[data[flux] != 0]
 
-def smoothing(t,flux,method=3,wotan_method='lowess'):
+def smoothing(table,method=2,wotan_method='lowess'):
     """
-    1: Lomb-Scargle
-    2: Two-step Lomb-Scargle
-    3: wotan tool: default lowess
+    1 Lomb-Scargle: first Lomb-Scargle. If twostep Lomb-Scargle desired, process will happen later in the pipeline.
+    2 wotan tool: default lowess
     
     """
-    if method != 3: # this block of code is the same for methods 1 and 2
+    t, flux, quality, real = clean_data(table)
+    timestep = calculate_timestep(table)
+    if method != 2: # this block of code is the same for methods 1 and 2
         flux = normalise_flux(flux)
         flux_ls = np.copy(flux)
-        lombscargle_filter(t,flux_ls,real,power) 
+        lombscargle_filter(t,flux_ls,real,0.08) 
         periodicnoise_ls = flux - flux_ls 
-        flux_ls = flux_ls * real
-        if method == 1: 
-            return flux_ls, periodicnoise_ls # returns one-step Lomb Scargle
-        elif method == 2:
-            masked_flux = np.copy(flux)
-            masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  # placeholder. need to change to match duration
-            original_masked_flux = np.copy(masked_flux)
-            lombscargle_filter(t, masked_flux, real, power)
-            periodicnoise_ls2 = original_masked_flux - masked_flux
-            masked_flux = masked_flux * real
-            final_flux = flux - periodicnoise_ls2
-            final_flux = final_flux * real
-            return final_flux, periodicnoise_ls2, flux_ls, periodicnoise_ls # returns two-step Lomb Scargle
-    elif method == 3:
+        flux_ls *= real
+        return flux_ls, periodicnoise_ls # returns one-step Lomb Scargle
+    elif method == 2:
+        # not normalised because wotan flatten will normalise it
         flattened_flux, trend_flux = flatten(time=t,flux=flux,method=wotan_method,window_length=2.5,return_trend=True)
         return flattened_flux, trend_flux
+    else:
+        print("method type not specified. Try again")
+        return
 
-def processing(table,f_path,make_plots=False,power=0.08,twostep=False): 
-    
+
+def smoothing_twostep(t,timestep,real,flux,m,n):
+    masked_flux = np.copy(flux)
+    masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  
+    original_masked_flux = np.copy(masked_flux)
+    lombscargle_filter(t, masked_flux, real, 0.08)
+    periodicnoise_ls2 = original_masked_flux - masked_flux
+    masked_flux = masked_flux * real
+    final_flux = (flux - periodicnoise_ls2) * real
+    #final_flux = final_flux * real
+    return final_flux, periodicnoise_ls2, original_masked_flux
+
+
+def processing(table,f_path,make_plots=False,twostep=False): 
 
     f = os.path.basename(f_path)
     if f.endswith('.pkl'):
@@ -659,8 +664,7 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=False):
         tic = f.split('_')[-5]
     else:
         print("TIC ID unidentified. Stopping...")
-        break
-
+        return
     
     if len(table) > 120: # 120 represents 2.5 days
        
@@ -677,21 +681,9 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=False):
         ones = np.ones(N)
         #flux = normalise_flux(flux)
         A_mag = np.abs(np.fft.rfft(normalise_flux(flux)))
-        # periodicnoise = flux - filteredflux
-
-        # first Lomb-Scargle
-        #flux_ls = np.copy(flux)
-        #flux_ls =  savgol_filter(flux_ls,145,2)
-        #lombscargle_filter(t,flux_ls,real,power) 
-        #periodicnoise_ls = flux - flux_ls 
-        #flux_ls = flux_ls * real 
 
         freq, powers = LombScargle(t,flux).autopower()
-        if twostep:
-            final_flux, smoothing_func, flux_ls, first_smoothing_func = smoothing(t,flux,method=2)
-        else:
-            final_flux, smoothing_func = smoothing(t,flux,method=3) # default
-
+        final_flux, smoothing_func = smoothing(table,method=2) 
 
         T1 = test_statistic_array(final_flux,60 * factor)
         Ts = nonzero(T1).std()
@@ -709,17 +701,8 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=False):
 
         # Second Lomb-Scargle
         if twostep:
-            #masked_flux = np.copy(flux)
-            #masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  # placeholder. need to change to match duration
-            #original_masked_flux = np.copy(masked_flux)
-            #periodicnoise_ls2 = original_masked_flux - masked_flux
-            ##lombscargle_filter(t, masked_flux, real, power)
-            #masked_flux = masked_flux * real
-            #final_flux = flux - periodicnoise_ls2
-            #final_flux = final_flux * real
-            final_flux = smoothing(t,flux,method=2)
+            final_flux, periodicnoise_ls2, original_masked_flux = smoothing_twostep(t,timestep,real,flux,m,n,0.08)
             T2 = test_statistic_array(final_flux, 60 * factor)
-            
             Ts = nonzero(T2).std()
 
             m, n = np.unravel_index(T2.argmin(), T2.shape)
@@ -763,7 +746,7 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=False):
                 "transit_prob",
             ]
             #result_str_df = pd.DataFrame(data=[result_str.split(' ')],columns=columns)
-            fig1, axarr = plt.subplots(10, figsize=(13, 22))
+            fig1, axarr = plt.subplots(10)
 
             # get table in pdf
             axarr[0].axis('off')
@@ -828,7 +811,7 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=False):
                     cmap="rainbow",
                 )
                 axarr[8].title.set_text("An image of the lightcurve  with the second Lomb-Scargle")
-            except: 
+            except NameError:
                 pass
 
             fig1.colorbar(im, cax=cax)
@@ -845,9 +828,7 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=False):
 
             except:
                 pass
-            
-            del original_masked_flux
-            
+                        
             if twostep:
                 fig1.savefig(f'plots/TIC{tic}_twostep.pdf')  
             else:
@@ -858,8 +839,7 @@ def processing(table,f_path,make_plots=False,power=0.08,twostep=False):
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
 
     del final_flux
-    del flux_ls
-
+    del smoothing_func
     return result_str
 
 def folders_in(path_to_parent):
