@@ -96,7 +96,7 @@ def get_lightcurves(data, storage_path, sec, plots=False, clip=3):
             fig.suptitle(f"TIC {tic}", fontsize=16, y=1.05)
 
 
-def filter_df(df, min_asym_score=-0.5, max_asym_score=2.0, duration=0.5):
+def filter_df(df, signal=5, min_asym_score=-0.5, max_asym_score=2.0, duration=0.5):
     """filters df for given parameter range.
     Default settings:
     - `signal/noise` greater than 5.
@@ -106,7 +106,7 @@ def filter_df(df, min_asym_score=-0.5, max_asym_score=2.0, duration=0.5):
     """
     return df[
         (df.duration >= duration)
-        # & (df["signal/noise"] <= signal)
+        & (df["signal/noise"] <= -(signal))
         & (df["asym_score"] >= min_asym_score)
         & (df["asym_score"] <= max_asym_score)
     ]

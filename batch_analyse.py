@@ -30,9 +30,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "-f",
-    help='select flux. "PDCSAP_FLUX is default. XRP lightcurve options are "corrected flux", "PCA flux" or "raw flux"',
+    help='select flux. "corrected flux is default. XRP lightcurve options are "corrected flux", "PCA flux" or "raw flux". For other lightcurves, options are "PDCSAP_FLUX"',
     dest="f",
-    default="PDCSAP_FLUX",
+    default="corrected flux",
 )
 parser.add_argument(
     "-c",
@@ -42,12 +42,13 @@ parser.add_argument(
     type=int,
 )
 
-parser.add_argument("-step", help="default twostep", dest="step", action="store_false")
+parser.add_argument("-step", help="default twostep", dest="step", action="store_true")
 parser.add_argument("-p", help="enable plotting", action="store_true")
+
 parser.add_argument("-n", help="set niceness", dest="n", default=8, type=int)
 parser.add_argument(
     "-m",
-    help="set smoothing method from wotan. default is lowess method",
+    help='set smoothing method. Default is lowess.',
     dest="m",
     default="lowess",
     type=str,
@@ -80,12 +81,14 @@ def run_lc(f_path):
         print(f_path)
         if f_path.endswith(".pkl"):
             table, lc_info = import_XRPlightcurve(
-                f_path, sector=sector, clip=args.c, drop_bad_points=args.q
+                f_path,
+                sector=sector,
+                clip=args.c,
             )
             table = table["time", args.f, "quality"]
         else:
             table, lc_info = import_lightcurve(
-                f_path, flux=args.f, drop_bad_points=args.q
+                f_path, flux=args.f
             )
         lc_info = " ".join([str(i) for i in lc_info])
         result_str = processing(
@@ -93,6 +96,7 @@ def run_lc(f_path):
         )
         try:
             os.makedirs("output_log")  # make directory plot if it doesn't exist
+            os.makedirs("output_log_xrp")
         except FileExistsError:
             pass
         try:
@@ -132,8 +136,10 @@ def run_lc(f_path):
 
 if __name__ == "__main__":
 
-    if "sector" in args.path:
-        sector = int(os.path.split(args.path[0])[0].split("_")[-2])
+    if "sector" in args.path[0]:
+        sector = int(os.path.split(args.path[0])[0].split("sector")[1].split("_")[1])
+        print(sector)
+
     else:
         sector = int(input("Sector? "))
 
@@ -141,8 +147,10 @@ if __name__ == "__main__":
 
     for path in paths:
         if not os.path.isdir(path):
-
-            print(path, "not a directory, skipping.", file=sys.stderr)
+            if os.path.isfile(path):
+                print(path)
+            else:
+                print(path, "not a directory, skipping.", file=sys.stderr)
             continue
 
         # if we are in the lowest subdirectory, perform glob this way.

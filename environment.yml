@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.7
+  - python=3.7.13
   - astropy
   - astroquery
   - black
@@ -13,10 +13,11 @@ dependencies:
   - jupyterlab
   - mamba
   - matplotlib
-  - numba
   - numexpr
+  - numba==0.53.0
   - numpy
   - pandas
+  - plotly
   - scikit-learn
   - scipy
   - seaborn

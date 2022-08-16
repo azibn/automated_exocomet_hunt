@@ -6,6 +6,7 @@ from astropy.stats import sigma_clip, sigma_clipped_stats
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 from astropy.timeseries import LombScargle
+from matplotlib import pyplot as plt
 from wotan import flatten
 import numpy as np
 cimport numpy as np
@@ -16,7 +17,7 @@ import kplr
 import data
 import warnings
 warnings.filterwarnings("ignore")
-from matplotlib import pyplot as plt
+
 
 
 def download_lightcurve(file, path='.'):
@@ -619,57 +620,68 @@ def normalise_lc(flux):
 def remove_zeros(data, flux):
     return data[data[flux] != 0]
 
-def smoothing(table,method=2,wotan_method='lowess',power=0.08):
+def smoothing(table,method,power=0.08):
     """
-    1 Lomb-Scargle: first Lomb-Scargle. If twostep Lomb-Scargle desired, process will happen later in the pipeline.
-    2 wotan tool: default lowess
+    Smoothing function. options:
+    lomb-scargle/fourier: use this for both one and twostep fourier methods.
+    wotan options: 'biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline'.
     
     """
+    # list of wotan available methods. There are probably more than specified here, but this is what is narrowed down to.
+    wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
+    #if method in wotan_methods:
+    #   # not normalised because wotan flatten will normalise it to 1.
+    #   # window length set to 2.5 days to keep results flexible. More aggressive measures would be reducing this value to 1.5 or 2.
+    #    flattened_flux, trend_flux = flatten(time=t,flux=flux,method=method,window_length=2.5,return_trend=True)
+    #return flattened_flux, trend_flux
+
     t, flux, quality, real = clean_data(table)
     timestep = calculate_timestep(table)
-    if method != 2: # this block of code is the same for methods 1 and 2
+    if method is None:
+        return flux, _
+    if method in wotan_methods:
+        flattened_flux, trend_flux = flatten(time=t,flux=flux,method=method,window_length=1,return_trend=True)
+        return flattened_flux, trend_flux
+    elif (method == 'lomb-scargle') or (method == 'fourier'): # this block of code is the same for methods 1 and 2
         flux = normalise_flux(flux)
         flux_ls = np.copy(flux)
         lombscargle_filter(t,flux_ls,real,power) 
         periodicnoise_ls = flux - flux_ls 
-        flux_ls = flux_ls * real
+        flux_ls *= real
         return flux_ls, periodicnoise_ls # returns one-step Lomb Scargle
-    elif method == 2:
-        # not normalised because wotan flatten will normalise it
-        flattened_flux, trend_flux = flatten(time=t,flux=flux,method=wotan_method,window_length=2.5,return_trend=True)
-        return flattened_flux, trend_flux
     else:
         print("method type not specified. Try again")
         return
 
-
 def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
-    masked_flux = np.copy(flux)
-    masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  
+    masked_flux = np.copy(flux)                    
+    masked_flux[n - 3*math.ceil(n*timestep) : n + 3*math.ceil(n*timestep)] = 0  
     original_masked_flux = np.copy(masked_flux)
     lombscargle_filter(t, masked_flux, real, power)
     periodicnoise_ls2 = original_masked_flux - masked_flux
     masked_flux = masked_flux * real
-    final_flux = (flux - periodicnoise_ls2) * real
-    #final_flux = final_flux * real
+    final_flux = flux - periodicnoise_ls2
+    final_flux *= real
     return final_flux, periodicnoise_ls2, original_masked_flux
 
 
-def processing(table,f_path,make_plots=False,twostep=False): 
-
+def processing(table,f_path,method='lowess',make_plots=False,twostep=False): 
+    """Smoothing methods:
+        1: Lomb-Scargle periodogram
+        2: wotan tools. Default is lowess"""
     f = os.path.basename(f_path)
     if f.endswith('.pkl'):
         tic = f.split('_')[-1].split('.pkl')[0] # eleanor
     elif "spoc" in f:
         tic = f.split('_')[-5]
     elif "kplr" in f:
-        tic = f.split('/')[-1].split('-')[0][4:] # should be kepler id, for sake of convenience later keeping variable named as tic
+        tic = f.split('/')[-1].split('-')[0] # should be kepler id, for sake of convenience later keeping variable named as tic
     else:
         print("TIC ID unidentified. Stopping...")
         return
     
     if len(table) > 120: # 120 represents 2.5 days
-       
+    
         t, flux, quality, real = clean_data(table)
         timestep = calculate_timestep(table)
         factor = ((1/48)/timestep)
@@ -683,9 +695,11 @@ def processing(table,f_path,make_plots=False,twostep=False):
         ones = np.ones(N)
         #flux = normalise_flux(flux)
         A_mag = np.abs(np.fft.rfft(normalise_flux(flux)))
-
+        wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
         freq, powers = LombScargle(t,flux).autopower()
-        final_flux, smoothing_func = smoothing(table,method=2) 
+        final_flux, smoothing_func = smoothing(table,method=method)
+        if method in wotan_methods:
+            final_flux = final_flux - np.ones(len(final_flux))
 
         T1 = test_statistic_array(final_flux,60 * factor)
         Ts = nonzero(T1).std()
@@ -703,7 +717,9 @@ def processing(table,f_path,make_plots=False,twostep=False):
 
         # Second Lomb-Scargle
         if twostep:
-            final_flux, periodicnoise_ls2, original_masked_flux = smoothing_twostep(t,timestep,real,flux,m,n,0.08)
+            final_flux2, periodicnoise_ls2, original_masked_flux = smoothing_twostep(t,timestep,real,flux,m,n)
+            final_flux = final_flux2
+            del final_flux2
             T2 = test_statistic_array(final_flux, 60 * factor)
             Ts = nonzero(T2).std()
 
@@ -748,7 +764,7 @@ def processing(table,f_path,make_plots=False,twostep=False):
                 "transit_prob",
             ]
             #result_str_df = pd.DataFrame(data=[result_str.split(' ')],columns=columns)
-            fig1, axarr = plt.subplots(10)
+            fig1, axarr = plt.subplots(10,figsize=(13, 22))
 
             # get table in pdf
             axarr[0].axis('off')
@@ -761,18 +777,16 @@ def processing(table,f_path,make_plots=False,twostep=False):
             axarr[2].title.set_text("Lomb-Scargle plot")
             axarr[2].set_xlabel("frequency")
             axarr[2].set_ylabel("Lomb-Scargle power")
-            axarr[3].plot(t, flux, label="flux")
+            axarr[3].plot(t, flux + ones, label="flux")
             axarr[3].plot(t, smoothing_func, label="periodic noise")
             axarr[3].set_xlim(np.min(t),np.max(t))
             axarr[3].title.set_text("Original lightcurve and the smoothing plot")
             axarr[3].set_xlabel("Days in BTJD")
             axarr[3].set_ylabel("Normalised flux")
             axarr[3].legend(loc="lower left")
-            axarr[4].plot(t, final_flux)  # lomb-scargle plot
+            axarr[4].plot(t, final_flux)  
             axarr[4].set_xlim(np.min(t),np.max(t))
-
-            # axarr[4].plot(m,marker='o')
-            axarr[4].title.set_text("First noise-removed lightcurve (first Lomb-Scargle)")
+            axarr[4].title.set_text("Flattened Lightcurve")
             axarr[4].set_xlabel("Days in BTJD")
             axarr[4].set_ylabel("Normalised flux")
             im = axarr[5].imshow(
@@ -787,11 +801,9 @@ def processing(table,f_path,make_plots=False,twostep=False):
             axarr[5].title.set_text("An image of the lightcurve  with the first Lomb-Scargle")
             axarr[5].set_xlabel("Days in BTJD")
             axarr[5].set_ylabel("Transit width in days")
-            axarr[5].set_aspect("auto")
+            axarr[5].set_aspect("auto")      
 
-            ## if two step lomb scargle, add subplots ...                
-
-            try:
+            if twostep:
                 axarr[6].plot(t, original_masked_flux + ones, label="masked flux")
                 axarr[6].plot(t, periodicnoise_ls2 + ones, label="periodic noise")
                 axarr[6].legend()
@@ -813,11 +825,9 @@ def processing(table,f_path,make_plots=False,twostep=False):
                     cmap="rainbow",
                 )
                 axarr[8].title.set_text("An image of the lightcurve  with the second Lomb-Scargle")
-            except NameError:
-                pass
-
             fig1.colorbar(im, cax=cax)
             fig1.tight_layout()
+        
 
             try:
                 t2, x2, q2, y2, w2 = info[0],info[1],info[2],info[3],info[4]
@@ -830,11 +840,19 @@ def processing(table,f_path,make_plots=False,twostep=False):
 
             except:
                 pass
-                        
+            
+            
+
             if twostep:
-                fig1.savefig(f'plots/TIC{tic}_twostep.pdf')  
+                if "kplr" in f:
+                    fig1.savefig(f'plots/{tic}_twostep_{method}.pdf')  
+                else:
+                    fig1.savefig(f'plots/TIC{tic}_twostep_{method}.pdf')  
             else:
-                fig1.savefig(f'plots/TIC{tic}.pdf')
+                if "kplr" in f:
+                    fig1.savefig(f'plots/{tic}_{method}.pdf')  
+                fig1.savefig(f'plots/TIC{tic}_{method}.pdf')
+            plt.close()
         
 
     else:
