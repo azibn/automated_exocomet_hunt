@@ -113,11 +113,23 @@ def filter_df(df, signal=5, min_asym_score=-0.5, max_asym_score=2.0, duration=0.
 
 
 def distribution(x, y):
+    # box = df[y <= -7.4) & (x >= 1.30) & (df['transit_prob'] == 'maybeTransit') & (x <= 1.60) & (y >= -12)]
     """plots asymmetry score vs signal/noise over a signal of 5"""
     fig, ax = plt.subplots(figsize=(10, 7))
-    ax.scatter(x, y, s=1)
+    ax.scatter(x, y, s=10)
     ax.set_xlim(-0, 1.9)
-    ax.set_ylim(5, 30)
-    ax.set_xlabel("$\\alpha$", fontsize=16)
-    ax.set_ylabel("$S$", fontsize=16)
+    ax.set_ylim(-1, 30)
+    ax.set_title("SNR vs asymmetry plot", fontsize=16)
+    ax.set_xlabel("$\\alpha$", fontsize=14)
+    ax.set_ylabel("$S$", fontsize=14)
+
+    ax.xaxis.label.set_color("white")  # setting up X-axis label color to yellow
+    ax.yaxis.label.set_color("white")  # setting up Y-axis label color to blue
+    ax.tick_params(axis="x", colors="white")  # setting up X-axis tick color to red
+    ax.tick_params(axis="y", colors="white")
+
+    ax.spines["left"].set_color("white")  # setting up Y-axis tick color to red
+    ax.spines["top"].set_color("white")
+    ax.spines["right"].set_color("white")  # setting up Y-axis tick color to red
+    ax.spines["bottom"].set_color("white")
     fig.tight_layout()

@@ -8,6 +8,7 @@ from scipy.signal import savgol_filter
 from astropy.timeseries import LombScargle
 from matplotlib import pyplot as plt
 from wotan import flatten
+from statistics import median,mean
 import numpy as np
 cimport numpy as np
 import math
@@ -620,7 +621,7 @@ def normalise_lc(flux):
 def remove_zeros(data, flux):
     return data[data[flux] != 0]
 
-def smoothing(table,method,power=0.08):
+def smoothing(table,method,window_length=2.5,power=0.08):
     """
     Smoothing function. options:
     lomb-scargle/fourier: use this for both one and twostep fourier methods.
@@ -640,8 +641,8 @@ def smoothing(table,method,power=0.08):
     if method is None:
         return flux, _
     if method in wotan_methods:
-        flattened_flux, trend_flux = flatten(time=t,flux=flux,method=method,window_length=1,return_trend=True)
-        return flattened_flux, trend_flux
+        flattened_flux = flatten(time=t,flux=flux,method=method,window_length=window_length)
+        return flattened_flux-np.ones(len(flattened_flux))
     elif (method == 'lomb-scargle') or (method == 'fourier'): # this block of code is the same for methods 1 and 2
         flux = normalise_flux(flux)
         flux_ls = np.copy(flux)
@@ -665,10 +666,10 @@ def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     return final_flux, periodicnoise_ls2, original_masked_flux
 
 
-def processing(table,f_path,method='lowess',make_plots=False,twostep=False): 
+def processing(table,f_path,method=None,make_plots=False,twostep=False): 
     """Smoothing methods:
         1: Lomb-Scargle periodogram
-        2: wotan tools. Default is lowess"""
+        2: wotan tools. Default is median"""
     f = os.path.basename(f_path)
     if f.endswith('.pkl'):
         tic = f.split('_')[-1].split('.pkl')[0] # eleanor
@@ -697,9 +698,12 @@ def processing(table,f_path,method='lowess',make_plots=False,twostep=False):
         A_mag = np.abs(np.fft.rfft(normalise_flux(flux)))
         wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
         freq, powers = LombScargle(t,flux).autopower()
-        final_flux, smoothing_func = smoothing(table,method=method)
-        if method in wotan_methods:
-            final_flux = final_flux - np.ones(len(final_flux))
+        if method is None:
+            final_flux = normalise_flux(flux)
+        elif method in wotan_methods:
+            final_flux, smoothing_func = smoothing(table,method=method)
+        else: 
+            final_flux, smoothing_func = smoothing(table,method=method)
 
         T1 = test_statistic_array(final_flux,60 * factor)
         Ts = nonzero(T1).std()
@@ -754,7 +758,7 @@ def processing(table,f_path,method='lowess',make_plots=False,twostep=False):
             columns = [
                 "file",
                 "signal",
-                "signal/noise",
+                "snr",
                 "time",
                 "asym_score",
                 "width1",
@@ -764,94 +768,173 @@ def processing(table,f_path,method='lowess',make_plots=False,twostep=False):
                 "transit_prob",
             ]
             #result_str_df = pd.DataFrame(data=[result_str.split(' ')],columns=columns)
-            fig1, axarr = plt.subplots(10,figsize=(13, 22))
+            fig1, ax = plt.subplots(10,figsize=(13, 20))
 
             # get table in pdf
-            axarr[0].axis('off')
-            axarr[0].table(cellText=[result_str.split(' ')],colLabels=columns,loc='center')
-            axarr[1].plot(A_mag)  # fourier plot
-            axarr[1].title.set_text("Fourier plot")
-            axarr[1].set_xlabel("frequency")
-            axarr[1].set_ylabel("power")
-            axarr[2].plot(freq, powers)
-            axarr[2].title.set_text("Lomb-Scargle plot")
-            axarr[2].set_xlabel("frequency")
-            axarr[2].set_ylabel("Lomb-Scargle power")
-            axarr[3].plot(t, flux + ones, label="flux")
-            axarr[3].plot(t, smoothing_func, label="periodic noise")
-            axarr[3].set_xlim(np.min(t),np.max(t))
-            axarr[3].title.set_text("Original lightcurve and the smoothing plot")
-            axarr[3].set_xlabel("Days in BTJD")
-            axarr[3].set_ylabel("Normalised flux")
-            axarr[3].legend(loc="lower left")
-            axarr[4].plot(t, final_flux)  
-            axarr[4].set_xlim(np.min(t),np.max(t))
-            axarr[4].title.set_text("Flattened Lightcurve")
-            axarr[4].set_xlabel("Days in BTJD")
-            axarr[4].set_ylabel("Normalised flux")
-            im = axarr[5].imshow(
+            ax[0].axis('off')
+            ax[0].table(cellText=[result_str.split(' ')],colLabels=columns,loc='center')
+            ax[1].plot(A_mag)  # fourier plot
+            ax[1].title.set_text("Fourier plot")
+            ax[1].set_xlabel("frequency")
+            ax[1].set_ylabel("power")
+            ax[2].plot(freq, powers)
+            ax[2].title.set_text("Lomb-Scargle plot")
+            ax[2].set_xlabel("frequency")
+            ax[2].set_ylabel("Lomb-Scargle power")
+            ax[3].plot(t, normalise_flux(flux), label="flux")
+            try:
+                ax[3].plot(t, smoothing_func, label="periodic noise")
+            except:
+                pass
+            ax[3].set_xlim(np.min(t),np.max(t))
+            ax[3].title.set_text("Original lightcurve and the smoothing plot")
+            ax[3].set_xlabel("Time - 2457000 (BTJD Days)")
+            ax[3].set_ylabel("Normalised flux")
+            ax[3].legend(loc="lower left")
+            ax[4].plot(t, final_flux)  
+            ax[4].set_xlim(np.min(t),np.max(t))
+            ax[4].title.set_text("Beta Pictoris - Sector 6")
+            ax[4].set_xlabel("Time - 2457000 (BTJD Days)")
+            ax[4].set_ylabel("Normalised flux")
+            #ax[4].xaxis.label.set_color('white')        #setting up X-axis label color to yellow
+            #ax[4].yaxis.label.set_color('white')          #setting up Y-axis label color to blue
+            #ax[4].tick_params(axis='x', colors='white',labelsize=12)    #setting up X-axis tick color to red
+            #ax[4].tick_params(axis='y', colors='white',labelsize=12)
+
+            #ax[4].spines['left'].set_color('white')        # setting up Y-axis tick color to red
+            #ax[4].spines['top'].set_color('white')
+            #ax[4].spines['right'].set_color('white')        # setting up Y-axis tick color to red
+            #ax[4].spines['bottom'].set_color('white')
+
+            im = ax[5].imshow(
                 T1,
                 origin="bottom",
-                extent=axarr[4].get_xlim() + (0, 2.5),
+                extent=ax[4].get_xlim() + (0, 2.5),
                 aspect="auto",
                 cmap="rainbow",
             )
+            #ax[5].xaxis.label.set_color('white')        #setting up X-axis label color to yellow
+            #ax[5].yaxis.label.set_color('white')          #setting up Y-axis label color to blue
+            #ax[5].tick_params(axis='x', colors='white',labelsize=12)    #setting up X-axis tick color to red
+            #ax[5].tick_params(axis='y', colors='white',labelsize=12)
+
+            #ax[5].spines['left'].set_color('white')        # setting up Y-axis tick color to red
+            #ax[5].spines['top'].set_color('white')
+            #ax[5].spines['right'].set_color('white')        # setting up Y-axis tick color to red
+            #ax[5].spines['bottom'].set_color('white')
 
             cax = fig1.add_axes([1.02, 0.09, 0.05, 0.25])
-            axarr[5].title.set_text("An image of the lightcurve  with the first Lomb-Scargle")
-            axarr[5].set_xlabel("Days in BTJD")
-            axarr[5].set_ylabel("Transit width in days")
-            axarr[5].set_aspect("auto")      
+            #ax[5].title.set_text("An image of the lightcurve")
+            #ax[5].set_xlabel("Days in BTJD")
+            ax[5].set_xlabel("Time - 2457000 (BTJD Days)")
+            ax[5].set_ylabel("Transit width in days")
+            ax[5].title.set_text("T-statistic")
+            ax[5].set_aspect("auto")      
 
             if twostep:
-                axarr[6].plot(t, original_masked_flux + ones, label="masked flux")
-                axarr[6].plot(t, periodicnoise_ls2 + ones, label="periodic noise")
-                axarr[6].legend()
-                axarr[6].set_xlim(np.min(t),np.max(t))
-                axarr[6].title.set_text("Lomb-Scargle applied on masked flux")
-                axarr[7].plot(t, flux + ones, color="tomato",alpha=0.5)
-                axarr[7].scatter(t, flux + ones, color="red",label='original flux',s=3)
-                axarr[7].plot(t, final_flux + ones - 0.003,alpha=0.5,color='cadetblue')
-                axarr[7].scatter(t, final_flux + ones - 0.003, label="final flux",s=3)
-                axarr[7].legend()
-                axarr[7].set_xlim(np.min(t),np.max(t))
-                axarr[7].title.set_text("Cleaned flux")
+                ax[6].plot(t, original_masked_flux + ones, label="masked flux")
+                ax[6].plot(t, periodicnoise_ls2 + ones, label="periodic noise")
+                ax[6].legend()
+                ax[6].set_xlim(np.min(t),np.max(t))
+                ax[6].title.set_text("Lomb-Scargle applied on masked flux")
+                ax[7].plot(t, flux + ones, color="tomato",alpha=0.5)
+                ax[7].scatter(t, flux + ones, color="red",label='original flux',s=3)
+                ax[7].plot(t, final_flux + ones - 0.003,alpha=0.5,color='cadetblue')
+                ax[7].scatter(t, final_flux + ones - 0.003, label="final flux",s=3)
+                ax[7].legend()
+                ax[7].set_xlim(np.min(t),np.max(t))
+                ax[7].title.set_text("Cleaned flux")
 
-                im = axarr[8].imshow(
+                im = ax[8].imshow(
                     T2,
                     origin="bottom",
-                    extent=(axarr[4].get_xlim()) + (0, 2.5),
+                    extent=(ax[4].get_xlim()) + (0, 2.5),
                     aspect="auto",
                     cmap="rainbow",
                 )
-                axarr[8].title.set_text("An image of the lightcurve  with the second Lomb-Scargle")
+                ax[8].title.set_text("An image of the lightcurve  with the second Lomb-Scargle")
             fig1.colorbar(im, cax=cax)
             fig1.tight_layout()
         
 
             try:
                 t2, x2, q2, y2, w2 = info[0],info[1],info[2],info[3],info[4]
-                axarr[9].plot(t2, x2+1) # flux
-                axarr[9].plot(t2,y2+1) # gauss fit
-                axarr[9].plot(t2,w2+1) # comet fit
-                axarr[9].set_title("Transit shape in box")
-                axarr[9].set_xlabel("Days in BTJD")
-                axarr[9].set_ylabel("Normalised flux")
+                ax[9].plot(t2, x2+1) # flux
+                ax[9].plot(t2,y2+1) # gauss fit
+                ax[9].plot(t2,w2+1) # comet fit
+                ax[9].set_title("Transit shape in box")
+                ax[9].set_xlabel("Days in BTJD")
+                ax[9].set_ylabel("Normalised flux")
 
             except:
                 pass
+
+            #fig2,ax2 = plt.subplots(2,figsize=(19,12))
+            #roll_mean = mean((final_flux)[500:500+48])
+            #roll_mean2 = mean(final_flux[700:700+72])
+
+            #ax2[0].plot(t, final_flux,color='white',alpha=0.75,zorder=1)  
+            #ax2[0].set_xlim(np.min(t),np.max(t))
+            #ax2[0].plot(median(t[500:500+48]),roll_mean,marker='o',color='orange',ms=12,alpha=1,zorder=3)
+            #ax2[0].plot(median(t[700:700+72]),roll_mean2,marker='o',color='deepskyblue',ms=12,alpha=1,zorder=3)
+            #ax2[0].axvline(x=t[500],c='orange',linestyle='--',label='1.0 days width',zorder=3)
+            #ax2[0].axvline(x=t[548],c='orange',linestyle='--',zorder=3)
+            #ax2[0].axvline(x=t[700],c='deepskyblue',linestyle='--',label='1.5 days width',zorder=3)
+            #ax2[0].axvline(x=t[772],c='deepskyblue',linestyle='--',zorder=3)
+            #ax2[0].title.set_text("Beta Pictoris - Sector 6", color='white')
+            #ax2[0].set_ylabel("Normalised flux",fontsize=20)
+            #ax2[0].xaxis.label.set_color('white')        #setting up X-axis label color to yellow
+            #ax2[0].yaxis.label.set_color('white')          #setting up Y-axis label color to blue
+            #ax2[0].tick_params(axis='x', colors='white',labelsize=14)    #setting up X-axis tick color to red
+            #ax2[0].tick_params(axis='y', colors='white',labelsize=14)
+
+            #ax2[0].spines['left'].set_color('white')        # setting up Y-axis tick color to red
+            #ax2[0].spines['top'].set_color('white')
+            #ax2[0].spines['right'].set_color('white')        # setting up Y-axis tick color to red
+            #ax2[0].spines['bottom'].set_color('white')
             
+            #im = ax2[1].imshow(
+            #    T1,
+            #    origin="bottom",
+            #    extent=ax[4].get_xlim() + (0, 2.5),
+            #    aspect="auto",
+            #    cmap="rainbow",
+            #)
+            #ax2[1].xaxis.label.set_color('white')        #setting up X-axis label color to yellow
+            #ax2[1].yaxis.label.set_color('white')          #setting up Y-axis label color to blue
+            #ax2[1].tick_params(axis='x', colors='white',labelsize=14)    #setting up X-axis tick color to red
+            #ax2[1].tick_params(axis='y', colors='white',labelsize=14)
+
+            #ax2[1].spines['left'].set_color('white')        # setting up Y-axis tick color to red
+            #ax2[1].spines['top'].set_color('white')
+            #ax2[1].spines['right'].set_color('white')        # setting up Y-axis tick color to red
+            #ax2[1].spines['bottom'].set_color('white')
+
+            #cax = fig2.add_axes([1.02, 0.09, 0.05, 0.25])
+            #ax[5].title.set_text("An image of the lightcurve")
+            #ax[5].set_xlabel("Days in BTJD")
+            #plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=3)
+
+            #ax2[1].set_ylabel("Transit width in days",fontsize=20)
+            #ax2[1].set_aspect("auto")   
+            #ax2[0].legend(loc='lower left',fontsize=18)
+            #plt.tight_layout()
+            #fig2.savefig(f'poster/poster_plot.png',dpi=300,transparent=True)
+            
+
+
+        
             
 
             if twostep:
                 if "kplr" in f:
-                    fig1.savefig(f'plots/{tic}_twostep_{method}.pdf')  
+                    fig1.savefig(f'plots/{tic}_twostep_{method}.png',dpi=300)  
                 else:
-                    fig1.savefig(f'plots/TIC{tic}_twostep_{method}.pdf')  
+                    fig1.savefig(f'plots/TIC{tic}_twostep_{method}.png',dpi=300)  
             else:
                 if "kplr" in f:
-                    fig1.savefig(f'plots/{tic}_{method}.pdf')  
-                fig1.savefig(f'plots/TIC{tic}_{method}.pdf')
+                    fig1.savefig(f'plots/{tic}_{method}.png',dpi=300)  
+                fig1.savefig(f'plots/TIC{tic}_{method}.png',dpi=300)
             plt.close()
         
 
@@ -859,7 +942,10 @@ def processing(table,f_path,method='lowess',make_plots=False,twostep=False):
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
 
     del final_flux
-    del smoothing_func
+    try:
+        del smoothing_func
+    except:
+        pass
     return result_str
 
 def folders_in(path_to_parent):
