@@ -76,7 +76,7 @@ A_mag = np.abs(np.fft.rfft(flux))
 flux_ls = np.copy(flux)
 
 # freq, powers = lombscargle_plotting(t,flux_ls,real,0.1)
-lombscargle_filter(t, flux_ls, real, 0.08)  # happens in-place. 0.05 is minimum score
+lombscargle_filter(t, flux_ls, real, 0.15)  # happens in-place. 0.05 is minimum score
 
 periodicnoise_ls = flux - flux_ls
 flux_ls = flux_ls * real
@@ -97,26 +97,6 @@ minT_time = t[n]
 minT_flux = flux[n]
 minT_duration = m * timestep
 
-# masked_flux = np.copy(flux)
-# masked_flux[n - 2*math.ceil(n*timestep) : n + 2*math.ceil(n*timestep)] = 0  # 2x width of dip
-
-# original_masked_flux = np.copy(masked_flux)
-# lombscargle_filter(t, masked_flux, real, 0.08)
-# periodicnoise_ls2 = original_masked_flux - masked_flux
-# masked_flux = masked_flux * real
-# final_flux = flux - periodicnoise_ls2
-# final_flux = final_flux * real
-
-# T_new = test_statistic_array(final_flux, 60 * factor)
-# data_nonzeroT = nonzero(T_new)
-
-# m2, n2 = np.unravel_index(T_new.argmin(), T_new.shape)
-
-# minT = T_new[m2, n2]
-# minT_time = t[n2]
-# minT_flux = flux[n2]
-# minT_duration = m2 * timestep
-
 print("Timestep of lightcurve: ", round(timestep * 1440, 3), "minutes.")
 print("Maximum transit chance:")
 print("   Time =", round(minT_time, 2), "days.")
@@ -133,7 +113,7 @@ if (
     n - 3 * m >= 0 and n + 3 * m < N
 ):  # m: width of point(s) in lc. first part: 3 transit widths away from first data point. last part: not more than 3 transit widths away.
     t2 = t[n - 3 * m : n + 3 * m]
-    x2 = final_flux[n - 3 * m : n + 3 * m]
+    x2 = flux_ls[n - 3 * m : n + 3 * m]
     q2 = quality[
         n - 3 * m : n + 3 * m
     ]  # quality points from three transit widths to other edge of three transit widths.
@@ -143,7 +123,6 @@ if (
     y2 = -gauss(t2, *paramsgauss)
     paramscomet = comet_curve_fit(t2, -x2)
     w2 = -comet_curve(t2, *paramscomet)
-
     scores = [score_fit(x2, fit) for fit in [y2, w2]]
     print("Asym score:", round(scores[0] / scores[1], 4))
 
@@ -157,9 +136,8 @@ asym = calc_shape(m, n, t, quality, flux)
 print(classify(m, n, real, asym))
 
 
-fig1, axarr = plt.subplots(8, figsize=(13, 22))
-# plt.rcParams['font.size'] = '16'
-# plt.rcParams['axes.labelsize'] = '16'
+fig1, axarr = plt.subplots(5, figsize=(13, 22))
+
 axarr[0].plot(A_mag)  # fourier plot
 axarr[0].title.set_text("Fourier plot")
 axarr[0].set_xlabel("frequency")
@@ -175,7 +153,6 @@ axarr[2].set_xlabel("Days in BTJD")
 axarr[2].set_ylabel("Normalised flux")
 axarr[2].legend(loc="lower left")
 axarr[3].plot(t, flux_ls + ones)  # lomb-scargle plot
-# axarr[3].plot(m,marker='o')
 axarr[3].title.set_text("First noise-removed lightcurve (first Lomb-Scargle)")
 axarr[3].set_xlabel("Days in BTJD")
 axarr[3].set_ylabel("Normalised flux")
@@ -193,25 +170,6 @@ axarr[4].title.set_text("An image of the lightcurve (first Lomb Scargle)")
 axarr[4].set_xlabel("Days in BTJD")
 axarr[4].set_ylabel("Transit width in days")
 axarr[4].set_aspect("auto")
-axarr[5].plot(t, original_masked_flux + ones, label="masked flux")
-axarr[5].plot(t, periodicnoise_ls2 + ones, label="periodic noise")
-axarr[5].legend()
-axarr[5].title.set_text("Lomb-Scargle applied on masked flux")
-axarr[6].plot(t, final_flux + ones, label="final flux")
-axarr[6].plot(t, flux + ones - 0.001, color="red", label="original flux")
-axarr[6].legend()
-axarr[6].title.set_text("Cleaned flux")
-
-im = axarr[7].imshow(
-    T_new,
-    origin="bottom",
-    extent=axarr[3].get_xlim() + (0, 2.5),
-    aspect="auto",
-    cmap="rainbow",
-)
-axarr[7].title.set_text("An image of the final lightcurve (second Lomb Scargle)")
-axarr[7].set_xlabel("Days in BTJD")
-axarr[7].set_ylabel("Transit width in days")
 
 fig1.colorbar(im, cax=cax)
 fig1.tight_layout()
@@ -234,17 +192,5 @@ except:
 # Skip showing plots if no graphical output set
 if args.n:
     sys.exit()
-plt.show()
 
-try:
-    os.makedirs("figs_single_analysis")  # make directory plot if it doesn't exist
-except FileExistsError:
-    pass
-
-try:
-    fig1.savefig(f"figs_single_analysis/plots_TIC{lc_info[0]}", dpi=300)
-except:
-    fig1.savefig(
-        f"figs_single_analysis/plots_{args.file[0].split('/')[-1].split('.fits')[0]}",
-        dpi=300,
-    )
+fig2.savefig(f"plots/lightcurve.png",dpi=300)
