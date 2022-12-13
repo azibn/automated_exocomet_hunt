@@ -3,10 +3,19 @@ import pandas as pd
 from astropy.io import fits
 from astropy.table import Table
 from astropy.stats import sigma_clip, sigma_clipped_stats
+from astropy import units as u
+from astropy.coordinates import SkyCoord
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 from astropy.timeseries import LombScargle
+from astroquery.simbad import Simbad
 from matplotlib import pyplot as plt
+from matplotlib.colorbar import Colorbar
+import matplotlib.patches as patches
+import matplotlib.gridspec as gs
+import matplotlib as mpl
+mpl.rcParams['agg.path.chunksize'] = 10000
+from post_processing_tools import *
 from wotan import flatten
 from statistics import median,mean
 import numpy as np
@@ -183,32 +192,28 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
 
     objdata = hdulist[0].header
     scidata = hdulist[1].data
-  
-    try:
-        if 'kplr' in file_path:
-            table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
-            info = [objdata['OBJECT'],objdata['KEPLERID'],objdata['KEPMAG'],objdata['QUARTER'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
-        elif 'tasoc' in file_path:
-            table = Table(scidata)['TIME','FLUX_CORR','QUALITY']
-        else:
-        #elif 'tess' in file_path:
-            #try:
-            table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
-            info = [objdata['OBJECT'],objdata['TICID'],objdata['TESSMAG'],objdata['SECTOR'],objdata['CAMERA'],objdata['CCD'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
-            #except:
-            #    time = scidata.TIME
-            #    flux = scidata.PDCSAP_FLUX
-            #    quality = scidata.QUALITY
-    except:
-        table = Table(scidata)['TIME','SAP_FLUX','QUALITY']
+
+    if 'kplr' in file_path:
+        table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+        info = [objdata['OBJECT'],objdata['KEPLERID'],objdata['KEPMAG'],objdata['QUARTER'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
+    elif 'ktwo' in file_path:
+        table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+        info = [objdata['OBJECT'],objdata['KEPLERID'],objdata['KEPMAG'],objdata['CAMPAIGN'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
+    elif 'tasoc' in file_path:
+        table = Table(scidata)['TIME','FLUX_CORR','QUALITY']
+    else:
+        table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
+        info = [objdata['OBJECT'],objdata['TICID'],objdata['TESSMAG'],objdata['SECTOR'],objdata['CAMERA'],objdata['CCD'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
+    #except:
+        #table = Table(scidata)['TIME','SAP_FLUX','QUALITY']
     
     hdulist.close()
-    
+
     if drop_bad_points:
         bad_points = []
-        if 'kplr' in file_path:
+        if 'kplr' in file_path or 'ktwo' in file_path:
             q_ind = get_quality_indices(table['SAP_QUALITY'])
-        elif 'tess' in file_path:
+        else:
             q_ind = get_quality_indices(table['QUALITY'])
         
         for j,q in enumerate(q_ind): # j=index, q=quality
@@ -238,7 +243,6 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
         table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
 
     return table, info
-
 
 def import_tasoclightcurve(file_path, drop_bad_points=False, flux='FLUX_CORR',
                       ok_flags=[]):
@@ -285,7 +289,7 @@ def clean_data(table):
             if steps > 1:
                 fluxstep = (fi - flux[-1])/steps
                 # For small gaps, pretend interpolated data is real.
-                if steps > 3:
+                if steps > 2:
                     set_real=0
                 else:
                     set_real=1
@@ -411,8 +415,8 @@ def test_statistic_array(np.ndarray[np.float64_t,ndim=1] flux, int max_half_widt
     return t_test
 
 
-def gauss(x,A,mu,sigma):
-    return abs(A)*np.exp( -(x - mu)**2 / (2 * sigma**2) )
+def gauss(t,A,t0,sigma):
+    return abs(A)*np.exp( -(t - t0)**2 / (2 * sigma**2) )
 
 def bimodal(x,A1,mu1,sigma1,A2,mu2,sigma2):
     return gauss(x,A1,mu1,sigma1)+gauss(x,A2,mu2,sigma2)
@@ -427,14 +431,17 @@ def skewed_gauss(x,A,mu,sigma1,sigma2):
     return y
 
 
-def comet_curve(x,A,mu,sigma,tail):
-    y = np.zeros(len(x))
-    for i in range(len(x)):
-        if x[i] < mu:
-            y[i] = gauss(x[i],A,mu,sigma)
+def comet_curve(t,A,t0,sigma,tail):
+    """
+    Equation for asymmetric Gaussian, representing the comet. The difference is the 1/tail term after the mid-transit.
+    """
+    x = np.zeros(len(t))
+    for i in range(len(t)):
+        if t[i] < t0:
+            x[i] = gauss(t[i],A,t0,sigma)
         else:
-            y[i] = A*math.exp(-abs(x[i]-mu)/tail)
-    return y
+            x[i] = A*math.exp(-abs(t[i]-t0)/tail)
+    return x
 
 
 def single_gaussian_curve_fit(x,y):
@@ -446,7 +453,7 @@ def single_gaussian_curve_fit(x,y):
 
     params_bounds = [[0,x[0],0], [np.inf,x[-1],sigma0*4]]
     params,cov = curve_fit(gauss,x,y,[A0,mu0,sigma0],bounds=params_bounds)
-    return params
+    return params, cov
 
 
 def nonzero(T):
@@ -465,11 +472,13 @@ def skewed_gaussian_curve_fit(x,y):
     params_bounds = [[0,x[0],0,0], [np.inf,x[-1],width/2,width/2]]
     params,cov = curve_fit(skewed_gauss,x,y,params_init,
                             bounds=params_bounds)
-    return params
+    return params, cov
 
 
 def comet_curve_fit(x,y):
     # Initial parameters guess
+    # x = time
+    # y = flux
     i = np.argmax(y)
 
     width = x[-1]-x[0]
@@ -478,7 +487,7 @@ def comet_curve_fit(x,y):
 
     params_bounds = [[0,x[0],0,0], [np.inf,x[-1],width/2,width/2]]
     params,cov = curve_fit(comet_curve,x,y,params_init,bounds=params_bounds)
-    return params
+    return params, cov
 
 
 def double_gaussian_curve_fit(T):
@@ -578,25 +587,24 @@ def calc_shape(m,n,time,quality,flux,cutout_half_width=3,
         bg_t2 = np.mean(t[(2*w-n_m_bg_end)*m:])
         grad = (bg_l2-bg_l1)/(bg_t2-bg_t1)
         background_level = bg_l1 + grad * (t - bg_t1)
-        x -= background_level
+        #x -= background_level
 
         try:
-            params1 = single_gaussian_curve_fit(t,-x)
-            params2 = comet_curve_fit(t,-x)
+            params1, pcov1 = single_gaussian_curve_fit(t,-x)
+            params2, pcov2 = comet_curve_fit(t,-x)
         except:
-            return -3,-3,-3, [t,x,q]
+            return -3,-3,-3
 
         fit1 = -gauss(t,*params1)
         fit2 = -comet_curve(t,*params2)
 
         scores = [score_fit(x,fit) for fit in [fit1,fit2]]
         if scores[1] > 0:
-            return scores[0]/scores[1], params2[2], params2[3], [t,x,q,fit1,fit2]
+            return scores[0]/scores[1], params2[2], params2[3], [t,x,q,fit1,fit2,background_level,pcov1,pcov2]
         else:
             return -1,-1,-1
     else:
         return -2,-2,-2
-
 
 def d2q(d):
     '''Convert Kepler day to quarter'''
@@ -621,29 +629,46 @@ def normalise_lc(flux):
 def remove_zeros(data, flux):
     return data[data[flux] != 0]
 
+def calc_mstatistic(flux):
+    avg = np.nanmedian(flux)
+    stdev = np.nanstd(flux)
+    # Extrema defined as the min and max 10% fluxes
+    ten_pctl = np.percentile(flux, 10)  # returns a float
+    nty_pctl = np.percentile(flux, 90)  # retruns a float
+
+    minima = np.where(flux < ten_pctl)  # indices of min
+    maxima = np.where(flux > nty_pctl)  # indices of max
+    extrema = np.append(minima, maxima)   # all extrema inds
+    ext_flux = flux[extrema]
+    diff = np.round((avg-np.mean(ext_flux))/stdev, 3)  # ! The M Statistic
+    return diff
+
+def get_flux(table):
+    """returns flux array depending on lightcurve pipeline"""
+    return table[table.colnames[1]]
+
+def get_time(table):
+    """returns time array depending on lightcurve pipeline"""
+    return table[table.colnames[0]]
+
+
 def smoothing(table,method,window_length=2.5,power=0.08):
     """
     Smoothing function. options:
     lomb-scargle/fourier: use this for both one and twostep fourier methods.
-    wotan options: 'biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline'.
-    
+    wotan options: 'biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline','savgol'.
     """
-    # list of wotan available methods. There are probably more than specified here, but this is what is narrowed down to.
-    wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
-    #if method in wotan_methods:
-    #   # not normalised because wotan flatten will normalise it to 1.
-    #   # window length set to 2.5 days to keep results flexible. More aggressive measures would be reducing this value to 1.5 or 2.
-    #    flattened_flux, trend_flux = flatten(time=t,flux=flux,method=method,window_length=2.5,return_trend=True)
-    #return flattened_flux, trend_flux
+    wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline','savgol']
+    t = get_time(table)
+    flux = get_flux(table)
 
-    t, flux, quality, real = clean_data(table)
-    timestep = calculate_timestep(table)
     if method is None:
-        return flux, _
+        return flux, None
     if method in wotan_methods:
-        flattened_flux = flatten(time=t,flux=flux,method=method,window_length=window_length)
-        return flattened_flux-np.ones(len(flattened_flux))
+        flattened_flux, trend_lc = flatten(time=t,flux=flux,method=method,window_length=window_length,return_trend=True)
+        return flattened_flux, trend_lc 
     elif (method == 'lomb-scargle') or (method == 'fourier'): # this block of code is the same for methods 1 and 2
+        t, flux, quality, real = clean_data(table)
         flux = normalise_flux(flux)
         flux_ls = np.copy(flux)
         lombscargle_filter(t,flux_ls,real,power) 
@@ -665,25 +690,37 @@ def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     final_flux *= real
     return final_flux, periodicnoise_ls2, original_masked_flux
 
-
-def processing(table,f_path,method=None,make_plots=False,twostep=False): 
-    """Smoothing methods:
-        1: Lomb-Scargle periodogram
-        2: wotan tools. Default is median"""
+def processing(table,f_path,lc_info=None,method=None,make_plots=False,twostep=False,return_arraydata=False): 
+    """the main bulk of the search algorithm.
+    inputs:
+    - :table: lightcurve table containing time, flux and quality (needs to only be these three columns)
+    - :f_path: path to file
+    - :lc_info: metadata about the lightcurve. Default is None.
+    - :method: Choice of smoothing method for lightcurves. Default is None.
+    - :make_plots: Create gridspec-based visualisation. Contents include plots of the lightcurve (pre and post-cleaning), the T-statistic of the lightcurve, its position on the SNR/alpha distribution and a zoomed-in transit of potential candidates. 
+    
+    """
     f = os.path.basename(f_path)
-    if f.endswith('.pkl'):
-        tic = f.split('_')[-1].split('.pkl')[0] # eleanor
-    elif "spoc" in f:
-        tic = f.split('_')[-5]
-    elif "kplr" in f:
-        tic = f.split('/')[-1].split('-')[0] # should be kepler id, for sake of convenience later keeping variable named as tic
-    else:
-        print("TIC ID unidentified. Stopping...")
-        return
+    obj_id = lc_info[0]
     
     if len(table) > 120: # 120 represents 2.5 days
+
+        # smoothing operation and normalisation of flux
+        ## note: since Wotan performs time-windowed smoothing without the need for interpolation, `clean_data` is placed after the smoothing step to create interpolated points at data gaps (purely for visual benefit). 
+       
+        wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
+        if method in wotan_methods:
+            flat_flux, trend_flux = smoothing(table,method=method)
+            table[table.colnames[1]] = flat_flux - np.ones(len(flat_flux))
+            t, flux, quality, real = clean_data(table)
+            flux *= real
+
+        else: 
+            t, flux, quality, real = clean_data(table)
+            flux, trend_flux = smoothing(table,method=method)
+
     
-        t, flux, quality, real = clean_data(table)
+
         timestep = calculate_timestep(table)
         factor = ((1/48)/timestep)
         # now throw away interpolated points (we're reprocessing
@@ -695,29 +732,42 @@ def processing(table,f_path,method=None,make_plots=False,twostep=False):
         N = len(t)
         ones = np.ones(N)
         #flux = normalise_flux(flux)
+
+        ## fourier and Lomb-Scargle
         A_mag = np.abs(np.fft.rfft(normalise_flux(flux)))
-        wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
-        freq, powers = LombScargle(t,flux).autopower()
-        if method is None:
-            final_flux = normalise_flux(flux)
-        elif method in wotan_methods:
-            final_flux, smoothing_func = smoothing(table,method=method)
-        else: 
-            final_flux, smoothing_func = smoothing(table,method=method)
+        freq, powers = LombScargle(t,flux).autopower() # think about that one
+        peak_power = powers.max()
 
-        T1 = test_statistic_array(final_flux,60 * factor)
-        Ts = nonzero(T1).std()
+        ## M-statistic
+        M_stat = calc_mstatistic(flux)
 
+        ## smoothing operation
+       
+
+        #if method is None:
+        #    final_flux = normalise_flux(flux)
+        #elif method in wotan_methods:
+        #    
+
+        #    final_flux, trend_flux = smoothing(table,method=method)
+        #    flux_aggressive_filter, trend_flux_aggressive_filter = smoothing(table,method=method,window_length=1)
+        #else: 
+        #    final_flux, trend_flux = smoothing(table,method=method)
+        #    flux_aggressive_filter, trend_flux_aggressive_filter = smoothing(table,method=method,window_length=1)
+
+        T1 = test_statistic_array(flux,60 * factor)
+        
         m, n = np.unravel_index(
         T1.argmin(), T1.shape
         )  # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
         minT = T1[m, n]
+        #Ts = nonzero(T1[m,n]).std()
         minT_time = t[n]
         minT_duration = m * timestep
         Tm_start = n-math.floor((m-1)/2)
         Tm_end = Tm_start + m
         Tm_depth = flux[Tm_start:Tm_end].mean() 
-        #final_flux = flux_ls.copy() # for plot matching purposes
+        Ts = nonzero(T1[m]).std() # only the box width selected. Not RMS of all T-statistic
 
         # Second Lomb-Scargle
         if twostep:
@@ -725,7 +775,7 @@ def processing(table,f_path,method=None,make_plots=False,twostep=False):
             final_flux = final_flux2
             del final_flux2
             T2 = test_statistic_array(final_flux, 60 * factor)
-            Ts = nonzero(T2).std()
+            
 
             m, n = np.unravel_index(T2.argmin(), T2.shape)
 
@@ -735,11 +785,13 @@ def processing(table,f_path,method=None,make_plots=False,twostep=False):
             Tm_start = n-math.floor((m-1)/2)
             Tm_end = Tm_start + m
             Tm_depth = flux[Tm_start:Tm_end].mean() 
+            Ts = nonzero(T2[m]).std()
         try:
-            asym, width1, width2, info = calc_shape(m,n,t,quality,final_flux) # check why flux; plotting purposes?
+            asym, width1, width2, info = calc_shape(m,n,t,quality,flux) # check why flux; plotting purposes?
             s = classify(m,n,real,asym)
+            
         except ValueError:
-            asym, width1, width2 = calc_shape(m,n,t,quality,final_flux)
+            asym, width1, width2 = calc_shape(m,n,t,quality,flux)
             s = classify(m,n,real,asym) 
         
         result_str =\
@@ -747,9 +799,12 @@ def processing(table,f_path,method=None,make_plots=False,twostep=False):
                 ' '.join([str(round(a,8)) for a in
                     [minT, minT/Ts, minT_time,
                     asym,width1,width2,
-                    minT_duration,Tm_depth]])+\
+                    minT_duration,Tm_depth,peak_power, M_stat]])+\
                 ' '+s
-        
+        #pcov_gauss, pcov_comet = info[-2], info[-1]
+        # -2 == pcov of gaussian, -1 == pcov of comet 
+
+        results = list(result_str)
         if make_plots:
             try:
                 os.makedirs("plots") # make directory plot if it doesn't exist
@@ -757,6 +812,9 @@ def processing(table,f_path,method=None,make_plots=False,twostep=False):
                 pass
             columns = [
                 "file",
+                "time_arr",
+                "flux_arr",
+                "quality_arr",
                 "signal",
                 "snr",
                 "time",
@@ -765,193 +823,142 @@ def processing(table,f_path,method=None,make_plots=False,twostep=False):
                 "width2",
                 "duration",
                 "depth",
+                "peak_lspower",
+                "mstat",
                 "transit_prob",
-            ]
-            #result_str_df = pd.DataFrame(data=[result_str.split(' ')],columns=columns)
-            fig1, ax = plt.subplots(10,figsize=(13, 20))
 
-            # get table in pdf
-            ax[0].axis('off')
-            ax[0].table(cellText=[result_str.split(' ')],colLabels=columns,loc='center')
-            ax[1].plot(A_mag)  # fourier plot
-            ax[1].title.set_text("Fourier plot")
-            ax[1].set_xlabel("frequency")
-            ax[1].set_ylabel("power")
-            ax[2].plot(freq, powers)
-            ax[2].title.set_text("Lomb-Scargle plot")
-            ax[2].set_xlabel("frequency")
-            ax[2].set_ylabel("Lomb-Scargle power")
-            ax[3].plot(t, normalise_flux(flux), label="flux")
+            ]
+
+            fig = plt.figure(figsize=(19,8))
+            gs1 = fig.add_gridspec(22, 13,hspace=0.9,wspace=0.9)
+            ax0 = plt.subplot(gs1[0:1,:]) # table of stats
+            ax0.axis('off')
+            result_str_table = ax0.table(cellText=[result_str.split()], colLabels=columns, loc='center'
+            )
+            result_str_table.scale(1.1,1)
+            result_str_table.auto_set_font_size(False)
+            result_str_table.set_fontsize(7)
+            ax1 = plt.subplot(gs1[2:5,:3]) # flux before + smoothing function
+            ax1.plot(t, normalise_flux(flux), label="flux")
             try:
-                ax[3].plot(t, smoothing_func, label="periodic noise")
+                ax1.plot(t, normalise_flux(trend_flux), label="smoothing filter")
             except:
                 pass
-            ax[3].set_xlim(np.min(t),np.max(t))
-            ax[3].title.set_text("Original lightcurve and the smoothing plot")
-            ax[3].set_xlabel("Time - 2457000 (BTJD Days)")
-            ax[3].set_ylabel("Normalised flux")
-            ax[3].legend(loc="lower left")
-            ax[4].plot(t, final_flux)  
-            ax[4].set_xlim(np.min(t),np.max(t))
-            ax[4].title.set_text("Beta Pictoris - Sector 6")
-            ax[4].set_xlabel("Time - 2457000 (BTJD Days)")
-            ax[4].set_ylabel("Normalised flux")
-            #ax[4].xaxis.label.set_color('white')        #setting up X-axis label color to yellow
-            #ax[4].yaxis.label.set_color('white')          #setting up Y-axis label color to blue
-            #ax[4].tick_params(axis='x', colors='white',labelsize=12)    #setting up X-axis tick color to red
-            #ax[4].tick_params(axis='y', colors='white',labelsize=12)
+            ax1.set_xlim(np.min(t),np.max(t))
+            ax1.title.set_text("Lightcurve and the Smoothing filter")
+            ax1.set_ylabel("Normalised flux")
+            ax1.legend(loc="lower left")
+            plt.setp(ax1.get_xticklabels(), visible=False)
 
-            #ax[4].spines['left'].set_color('white')        # setting up Y-axis tick color to red
-            #ax[4].spines['top'].set_color('white')
-            #ax[4].spines['right'].set_color('white')        # setting up Y-axis tick color to red
-            #ax[4].spines['bottom'].set_color('white')
+            ax2 = plt.subplot(gs1[6:9,:3],sharex=ax1) # flux after
+            ax2.plot(t, final_flux,label = 'flux')
+            ax2.title.set_text("Smoothened Lightcurve")
+            ax2.set_ylabel("Normalised flux")
+            ax2.legend(loc="lower left")  
+            plt.setp(ax2.get_xticklabels(), visible=False)
 
-            im = ax[5].imshow(
-                T1,
-                origin="bottom",
-                extent=ax[4].get_xlim() + (0, 2.5),
-                aspect="auto",
-                cmap="rainbow",
-            )
-            #ax[5].xaxis.label.set_color('white')        #setting up X-axis label color to yellow
-            #ax[5].yaxis.label.set_color('white')          #setting up Y-axis label color to blue
-            #ax[5].tick_params(axis='x', colors='white',labelsize=12)    #setting up X-axis tick color to red
-            #ax[5].tick_params(axis='y', colors='white',labelsize=12)
 
-            #ax[5].spines['left'].set_color('white')        # setting up Y-axis tick color to red
-            #ax[5].spines['top'].set_color('white')
-            #ax[5].spines['right'].set_color('white')        # setting up Y-axis tick color to red
-            #ax[5].spines['bottom'].set_color('white')
-
-            cax = fig1.add_axes([1.02, 0.09, 0.05, 0.25])
-            #ax[5].title.set_text("An image of the lightcurve")
-            #ax[5].set_xlabel("Days in BTJD")
-            ax[5].set_xlabel("Time - 2457000 (BTJD Days)")
-            ax[5].set_ylabel("Transit width in days")
-            ax[5].title.set_text("T-statistic")
-            ax[5].set_aspect("auto")      
-
-            if twostep:
-                ax[6].plot(t, original_masked_flux + ones, label="masked flux")
-                ax[6].plot(t, periodicnoise_ls2 + ones, label="periodic noise")
-                ax[6].legend()
-                ax[6].set_xlim(np.min(t),np.max(t))
-                ax[6].title.set_text("Lomb-Scargle applied on masked flux")
-                ax[7].plot(t, flux + ones, color="tomato",alpha=0.5)
-                ax[7].scatter(t, flux + ones, color="red",label='original flux',s=3)
-                ax[7].plot(t, final_flux + ones - 0.003,alpha=0.5,color='cadetblue')
-                ax[7].scatter(t, final_flux + ones - 0.003, label="final flux",s=3)
-                ax[7].legend()
-                ax[7].set_xlim(np.min(t),np.max(t))
-                ax[7].title.set_text("Cleaned flux")
-
-                im = ax[8].imshow(
-                    T2,
-                    origin="bottom",
-                    extent=(ax[4].get_xlim()) + (0, 2.5),
-                    aspect="auto",
-                    cmap="rainbow",
-                )
-                ax[8].title.set_text("An image of the lightcurve  with the second Lomb-Scargle")
-            fig1.colorbar(im, cax=cax)
-            fig1.tight_layout()
-        
-
+            ax3 = plt.subplot(gs1[2:7,3:]) # transit shape
             try:
                 t2, x2, q2, y2, w2 = info[0],info[1],info[2],info[3],info[4]
-                ax[9].plot(t2, x2+1) # flux
-                ax[9].plot(t2,y2+1) # gauss fit
-                ax[9].plot(t2,w2+1) # comet fit
-                ax[9].set_title("Transit shape in box")
-                ax[9].set_xlabel("Days in BTJD")
-                ax[9].set_ylabel("Normalised flux")
-
+                ax3.plot(t2, info[-1]+1)
+                ax3.plot(t2, x2+1,label='flux') # flux
+                ax3.plot(t2,y2+1,label='gaussian curve') # gauss fit
+                ax3.plot(t2,w2+1,label='comet curve') # comet fit
+                ax3.set_title("Transit shape in box")
+                ax3.set_xlabel("Time - 2457000 (BTJD Days)")
+                ax3.set_ylabel("Normalised flux")
+                ax3.legend(loc="lower left")
             except:
                 pass
-
-            #fig2,ax2 = plt.subplots(2,figsize=(19,12))
-            #roll_mean = mean((final_flux)[500:500+48])
-            #roll_mean2 = mean(final_flux[700:700+72])
-
-            #ax2[0].plot(t, final_flux,color='white',alpha=0.75,zorder=1)  
-            #ax2[0].set_xlim(np.min(t),np.max(t))
-            #ax2[0].plot(median(t[500:500+48]),roll_mean,marker='o',color='orange',ms=12,alpha=1,zorder=3)
-            #ax2[0].plot(median(t[700:700+72]),roll_mean2,marker='o',color='deepskyblue',ms=12,alpha=1,zorder=3)
-            #ax2[0].axvline(x=t[500],c='orange',linestyle='--',label='1.0 days width',zorder=3)
-            #ax2[0].axvline(x=t[548],c='orange',linestyle='--',zorder=3)
-            #ax2[0].axvline(x=t[700],c='deepskyblue',linestyle='--',label='1.5 days width',zorder=3)
-            #ax2[0].axvline(x=t[772],c='deepskyblue',linestyle='--',zorder=3)
-            #ax2[0].title.set_text("Beta Pictoris - Sector 6", color='white')
-            #ax2[0].set_ylabel("Normalised flux",fontsize=20)
-            #ax2[0].xaxis.label.set_color('white')        #setting up X-axis label color to yellow
-            #ax2[0].yaxis.label.set_color('white')          #setting up Y-axis label color to blue
-            #ax2[0].tick_params(axis='x', colors='white',labelsize=14)    #setting up X-axis tick color to red
-            #ax2[0].tick_params(axis='y', colors='white',labelsize=14)
-
-            #ax2[0].spines['left'].set_color('white')        # setting up Y-axis tick color to red
-            #ax2[0].spines['top'].set_color('white')
-            #ax2[0].spines['right'].set_color('white')        # setting up Y-axis tick color to red
-            #ax2[0].spines['bottom'].set_color('white')
-            
-            #im = ax2[1].imshow(
-            #    T1,
-            #    origin="bottom",
-            #    extent=ax[4].get_xlim() + (0, 2.5),
-            #    aspect="auto",
-            #    cmap="rainbow",
-            #)
-            #ax2[1].xaxis.label.set_color('white')        #setting up X-axis label color to yellow
-            #ax2[1].yaxis.label.set_color('white')          #setting up Y-axis label color to blue
-            #ax2[1].tick_params(axis='x', colors='white',labelsize=14)    #setting up X-axis tick color to red
-            #ax2[1].tick_params(axis='y', colors='white',labelsize=14)
-
-            #ax2[1].spines['left'].set_color('white')        # setting up Y-axis tick color to red
-            #ax2[1].spines['top'].set_color('white')
-            #ax2[1].spines['right'].set_color('white')        # setting up Y-axis tick color to red
-            #ax2[1].spines['bottom'].set_color('white')
-
-            #cax = fig2.add_axes([1.02, 0.09, 0.05, 0.25])
-            #ax[5].title.set_text("An image of the lightcurve")
-            #ax[5].set_xlabel("Days in BTJD")
-            #plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=3)
-
-            #ax2[1].set_ylabel("Transit width in days",fontsize=20)
-            #ax2[1].set_aspect("auto")   
-            #ax2[0].legend(loc='lower left',fontsize=18)
-            #plt.tight_layout()
-            #fig2.savefig(f'poster/poster_plot.png',dpi=300,transparent=True)
-            
+            ax4 = plt.subplot(gs1[10:13,:3]) # imshow
+            im = ax4.imshow(
+                T1,
+                origin="bottom",
+                extent=ax1.get_xlim() + (0, 2.5),
+                aspect="auto",
+                cmap="rainbow"
+            )
+            ax4.set_xlabel("Time - 2457000 (BTJD Days)")
+            ax4.set_ylabel("Transit width in days")
+            ax4.title.set_text("T-statistic of the lightcurve")
+            cbax = plt.subplot(gs1[14:15,:3]) # Place it where it should be.
+            cb = Colorbar(ax = cbax, mappable = im, orientation = 'horizontal', ticklocation = 'bottom')
 
 
+            #df  = get_output("output_log/spoc_s6_median.txt")
+            #obj_params = df.loc[df.file.str.contains("270577175")]
         
-            
+            #ax5 = plt.subplot(gs1[9:15,3:])
+            #ax5.scatter(df.asym_score,abs(df['signal/noise']),alpha=0.3,s=2)
+            #ax5.scatter(obj_params.asym_score,abs(obj_params['signal/noise']),color='k')
+            #ax5.set_xlabel("Asymmetry Ratio")
+            #ax5.set_ylabel("SNR")
+            #ax5.title.set_text("SNR vs Asymmetry Ratio")
+            #ax5.set_xlim(0, 1.9)
+            #ax5.set_ylim(-1, 30)
+            #rect = patches.Rectangle((1.05, 5), 2, 30, linewidth=3, edgecolor='r', facecolor='none')
+            #ax5.add_patch(rect)
 
-            if twostep:
-                if "kplr" in f:
-                    fig1.savefig(f'plots/{tic}_twostep_{method}.png',dpi=300)  
-                else:
-                    fig1.savefig(f'plots/TIC{tic}_twostep_{method}.png',dpi=300)  
-            else:
-                if "kplr" in f:
-                    fig1.savefig(f'plots/{tic}_{method}.png',dpi=300)  
-                fig1.savefig(f'plots/TIC{tic}_{method}.png',dpi=300)
+            # if file is .pkl: store[1],store[2], else [-2] and [-1]
+            #ax6 = plt.subplot(gs1[16:,:3],projection="aitoff")
+            #ra = info[-2] * u.degree
+            #dec = info[-1] * u.degree
+            #d = SkyCoord(ra=ra, dec=dec, frame='icrs')
+            #ax6.figure(figsize=(13,9))
+            #ax6.set_title("Aitoff projection")
+            #ax6.grid(True)
+            #ax6.plot(ra, dec, 'o', alpha=2)
+
+            #ax7 = plt.subplot(gs1[16:,3:])
+            #ax7.set_title("HR Diagram")
+
+
+            #customSimbad = Simbad()
+            #customSimbad.add_votable_fields("sptype","parallax")
+
+            #if ".pkl" in f:
+            #    obj_id = "TIC" + str(obj_id)
+            #obj = customSimbad.query_object(obj_id).to_pandas().T
+            #obj_name, obj_sptype, obj_parallax = obj.loc['MAIN_ID'][0], obj.loc['SP_TYPE'][0],obj.loc['PLX_VALUE'][0]
+            #fig.suptitle(f" {obj_id}, {obj_name}, Spectral Type {obj_sptype}, Parallax {obj_parallax} (mas)", fontsize = 16,y=0.93)     
+            #fig.tight_layout()
+     
+            fig.savefig(f'plots/{obj_id}_twostep_{method}.png',dpi=300) 
+
+            #if twostep:
+            #    fig.savefig(f'plots/{obj_id}_twostep_{method}.png',dpi=300)  
+            #else:
+            #    fig.savefig(f'plots/{obj_id}_twostep_{method}.png',dpi=300)  
+
             plt.close()
         
 
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
 
-    del final_flux
-    try:
-        del smoothing_func
-    except:
-        pass
-    return result_str
+    
+    ## saving to storage directory on the csc. For more general purposes, this should be changed to lc_arraydata/ ...
+    #if return_arraydata:
+    #    try:
+    #        os.makedirs(f"/storage/astro2/phrdhx/tesslcs/lc_arraydata")
+    #    except FileExistsError:
+    #        pass
+    #    np.savez(f'/storage/astro2/phrdhx/tesslcs/lc_arraydata/tesslc_{obj_id}.npz',obj_id=obj_id,time=t,flux=final_flux,trend_flux=trend_flux,agg_flux=flux_aggressive_filter,agg_trend_flux=trend_flux_aggressive_filter,quality=quality)
+    
+    #del final_flux
+    #del flux_aggressive_filter
+    #del trend_flux
+    #del trend_flux_aggressive_filter
+    return result_str, [t, flux, trend_flux, quality]
+
+
 
 def folders_in(path_to_parent):
     """Identifies if directory is the lowest directory"""
-    for fname in os.listdir(path_to_parent):
-        if os.path.isdir(os.path.join(path_to_parent,fname)):
-            yield os.path.join(path_to_parent,fname)
-
-
+    try:
+        for fname in os.listdir(path_to_parent):
+            if os.path.isdir(os.path.join(path_to_parent,fname)):
+                yield os.path.join(path_to_parent,fname)
+    except:
+        pass

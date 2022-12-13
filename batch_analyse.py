@@ -14,6 +14,7 @@ import tqdm
 import glob
 import loaders
 import warnings
+import numpy as np
 
 warnings.filterwarnings("ignore")
 
@@ -45,12 +46,16 @@ parser.add_argument("-step", help="enable twostep. used in conjuction with -m fo
 parser.add_argument("-p", help="enable plotting", action="store_true")
 parser.add_argument(
     "-metadata",
-    help="metadata file",
+    help="save metadata of the lightcurves as a .txt file",
     dest="metadata",
     action="store_true",
 )
 
-parser.add_argument("-n", help="set niceness", dest="n", default=8, type=int)
+parser.add_argument("-nice", help="set niceness", dest="nice", default=8, type=int)
+
+
+parser.add_argument("-return_arraydata", help="save cleaned data arrays as .npz file", dest="return_arraydata", action="store_true")
+
 parser.add_argument(
     "-m",
     help="set smoothing method. Default is None.",
@@ -59,11 +64,13 @@ parser.add_argument(
     type=str,
 )
 
+parser.add_argument("-n", help='does not save output file', action="store_true")
+
 # Get directories from command line arguments.
 args = parser.parse_args()
 
 # set niceness
-os.nice(args.n)
+os.nice(args.nice)
 
 paths = []
 for path in args.path:
@@ -81,7 +88,7 @@ lock = m.Lock()
 
 #pipeline_options = {"xrp":".pkl","spoc":".fits"}
 
-def run_lc(f_path, get_metadata=args.metadata):
+def run_lc(f_path, get_metadata=args.metadata,return_arraydata=args.return_arraydata):
     try:
         f = os.path.basename(f_path)
         print(f_path)
@@ -92,28 +99,49 @@ def run_lc(f_path, get_metadata=args.metadata):
                 clip=args.c,
             )
             table = table["time", args.f, "quality"]
+
         else:
             table, lc_info = import_lightcurve(f_path, flux=args.f)
-        lc_info = " ".join([str(i) for i in lc_info])
-        result_str = processing(
-            table, f_path, method=args.m, make_plots=args.p, twostep=args.step
+            table = table['TIME',args.f,'QUALITY']
+        result_str, save_data = processing(
+            table, f_path, lc_info, method=args.m, make_plots=args.p, twostep=args.step
         )
+
         try:
             os.makedirs("output_log")  
+            #os.makedirs("lc_metadata")
+        except FileExistsError:
+            pass
+        try:
             os.makedirs("lc_metadata")
         except FileExistsError:
             pass
-        #try:
-        #    os.makedirs("lc_metadata")
-        #except FileExistsError:
-        #    pass
+        
+        if return_arraydata:
+            obj_id = lc_info[0]
+            try:
+                os.makedirs(f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/")
+            except FileExistsError:
+                pass
+            try:
+                os.makedirs(f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}")
+            except FileExistsError:
+                pass
+            np.savez(f'/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}/tesslc_{obj_id}.npz',obj_id=obj_id,time=save_data[0],flux=save_data[1],trend_flux=save_data[2], quality=save_data[3])#,agg_flux=flux_aggressive_filter,agg_trend_flux=trend_flux_aggressive_filter,quality=quality)
+
+        if args.n:
+            return
+
+        lc_info = " ".join([str(i) for i in lc_info])
+
         lock.acquire()
         with open(os.path.join("output_log/", args.of), "a") as out_file:
             out_file.write(result_str + "\n")
         if get_metadata:
             with open(
-                os.path.join("lc_metadata/", f"metadata_sector_{sector}"),"a") as out_file2:
+                os.path.join("lc_metadata/", f"metadata_sector_{sector}.txt"),"a") as out_file2:
                 out_file2.write(f + " " + lc_info + " " + f"{sector}" + "\n")
+                
         lock.release()
     except (KeyboardInterrupt, SystemExit):
         print("Process terminated early, exiting", file=sys.stderr)
@@ -124,16 +152,13 @@ def run_lc(f_path, get_metadata=args.metadata):
 
 
 if __name__ == "__main__":
-    print(f"Script started at {time.ctime()}.")
     start_time = time.time()
     try:
         if "sector" in args.path[0]:
             sector = int(os.path.split(args.path[0])[0].split("sector")[1].split("_")[1])
             print(sector)
-        else:
-            sector = int(input("Sector? "))
-    except IndexError:
-            sector = int(input("Sector? "))
+    except:
+        pass
 
     pool = multiprocessing.Pool(processes=args.threads)
 
@@ -141,39 +166,34 @@ if __name__ == "__main__":
         if not os.path.isdir(path):
             if os.path.isfile(path):
                 run_lc(path,args.metadata)
-            #else:
-            #    print(path, "not a directory or valid file, skipping.", file=sys.stderr)
-            #continue
+                sys.exit()
 
         # if we are in the lowest subdirectory, perform glob this way.
         if not list(folders_in(path)):
             print("this is the lowest subdirectory. running the search...")
 
             # works for both Kepler and TESS fits files.
-            fits_files = glob.glob(os.path.join(path, "*lc.fits"))
-            pkl_files = glob.glob(os.path.join(path, "*.pkl"))
+            fits = glob.glob(os.path.join(path, "*lc.fits"))
+            pkl = glob.glob(os.path.join(path, "*.pkl"))
+            npz = glob.glob(os.path.join(path,"*.npz")) # for fake transits
 
-            pool.map(run_lc, pkl_files)
-            pool.map(run_lc, fits_files)
+            pool.map(run_lc, pkl)
+            pool.map(run_lc, fits)
+            pool.map(run_lc, npz)
 
         else:
             print("globbing subdirectories")
 
             # Start at Sector directory, glob goes through `target/000x/000x/xxxx/**/*lc.fits`
-            fits_files = glob.glob(os.path.join(path, "target/**/**/**/**/*lc.fits"))
-            pkl_files = glob.glob(os.path.join(path, "**/*.pkl"))
+            fits = glob.glob(os.path.join(path, "target/**/**/**/**/*lc.fits"))
+            pkl = glob.glob(os.path.join(path, "**/*.pkl"))
 
             print("running the search...")
 
-            pool.map(run_lc, pkl_files)
-            pool.map(run_lc, fits_files)
+            pool.map(run_lc, pkl)
+            pool.map(run_lc, fits)
     end_time = time.time()
     total_time = end_time - start_time
-    if total_time <= 60:
-        print(f"Completed in {(total_time)/60} minutes")
-    elif total_time <= 60*60 and total_time > 60:
-        print(f"Completed in {(total_time)/(3600)} hours")
-    else:
-        print(f"Completed in {(total_time)} seconds")
+    print(f"Completed in {(total_time)/60} minutes.")
 
 ## trying a piece of code here. please work

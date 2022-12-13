@@ -14,19 +14,54 @@ def get_output(file_path):
     - df: DataFrame of output file.
 
     """
-    df = pd.read_csv(file_path, sep=" ", header=None)
+    if isinstance(file_path, list):
+        df = pd.DataFrame(data=file_path)
+    elif file_path.endswith(".txt"):
+        df = pd.read_csv(file_path, sep=" ", header=None)
+
 
     cols = [
         "file",
         "signal",
-        "signal/noise",
+        "snr",
         "time",
         "asym_score",
         "width1",
         "width2",
         "duration",
         "depth",
+        "peak_lspower",
+        "mstat",
         "transit_prob",
+    ]
+    df.columns = cols
+    return df
+
+
+def get_metadata(file_path):
+    """Imports batch_analyse output file as pandas dataframe.
+
+    file_path: ouptut file (.txt format)
+
+    Returns:
+    - df: DataFrame of output file.
+
+    """
+    if isinstance(file_path, list):
+        df = pd.DataFrame(data=file_path)
+    elif file_path.endswith(".txt"):
+        df = pd.read_csv(file_path, sep=" ", header=None)
+
+
+    cols = [
+        "file",
+        "ticid",
+        "ra",
+        "dec",
+        "magnitude",
+        "camera",
+        "chip",
+        "sector"
     ]
     df.columns = cols
     return df
@@ -106,30 +141,32 @@ def filter_df(df, signal=5, min_asym_score=-0.5, max_asym_score=2.0, duration=0.
     """
     return df[
         (df.duration >= duration)
-        & (df["signal/noise"] <= -(signal))
+        & (df["snr"] <= -(signal))
         & (df["asym_score"] >= min_asym_score)
         & (df["asym_score"] <= max_asym_score)
     ]
 
 
-def distribution(x, y):
+def distribution(x, y,savefig=False,savefig_path="distribution.png"):
     # box = df[y <= -7.4) & (x >= 1.30) & (df['transit_prob'] == 'maybeTransit') & (x <= 1.60) & (y >= -12)]
     """plots asymmetry score vs signal/noise over a signal of 5"""
     fig, ax = plt.subplots(figsize=(10, 7))
-    ax.scatter(x, y, s=10)
+    ax.scatter(x, y, s=2)
     ax.set_xlim(-0, 1.9)
     ax.set_ylim(-1, 30)
-    ax.set_title("SNR vs asymmetry plot", fontsize=16)
-    ax.set_xlabel("$\\alpha$", fontsize=14)
-    ax.set_ylabel("$S$", fontsize=14)
+    ax.set_title("SNR vs asymmetry plot", fontsize=14)
+    ax.set_xlabel("$\\alpha$", fontsize=12)
+    ax.set_ylabel("$S$", fontsize=12)
 
-    ax.xaxis.label.set_color("white")  # setting up X-axis label color to yellow
-    ax.yaxis.label.set_color("white")  # setting up Y-axis label color to blue
-    ax.tick_params(axis="x", colors="white")  # setting up X-axis tick color to red
-    ax.tick_params(axis="y", colors="white")
+    #ax.xaxis.label.set_color("white")  # setting up X-axis label color to yellow
+    #ax.yaxis.label.set_color("white")  # setting up Y-axis label color to blue
+    #ax.tick_params(axis="x", colors="white")  # setting up X-axis tick color to red
+    #ax.tick_params(axis="y", colors="white")
 
-    ax.spines["left"].set_color("white")  # setting up Y-axis tick color to red
-    ax.spines["top"].set_color("white")
-    ax.spines["right"].set_color("white")  # setting up Y-axis tick color to red
-    ax.spines["bottom"].set_color("white")
+    #ax.spines["left"].set_color("white")  # setting up Y-axis tick color to red
+    #ax.spines["top"].set_color("white")
+    #ax.spines["right"].set_color("white")  # setting up Y-axis tick color to red
+    #ax.spines["bottom"].set_color("white")
     fig.tight_layout()
+    if savefig:
+        fig.savefig(savefig_path,dpi=300)

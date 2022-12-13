@@ -3,15 +3,13 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.7.13
+  - python=3.7
   - astropy
   - astroquery
   - black
   - bokeh==2.2.3
-  - celerite
   - cython
   - jupyterlab
-  - mamba
   - matplotlib
   - numexpr
   - numba==0.53.0
@@ -26,9 +24,9 @@ dependencies:
   - tqdm
   - pickle5
   - pip
+  - umap-learn
   - pip:
     - lightkurve>=2
     - eleanor
-    - kplr
     - markupsafe==2.0.1
     - wotan
