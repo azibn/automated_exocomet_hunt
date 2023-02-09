@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 # First have to disable inbuilt multithreading for performance reasons.
 import os
-
-# os.nice(8)
-os.environ["OMP_NUM_THREADS"] = "1"
-from analysis_tools_cython import *
 import multiprocessing
 import sys
 import time
 import traceback
 import argparse
-import tqdm
 import glob
-import loaders
 import warnings
 import numpy as np
+import pandas as pd
+from astropy.table import Table
+from analysis_tools_cython import import_XRPlightcurve, import_lightcurve, processing, folders_in
 
+os.environ["OMP_NUM_THREADS"] = "1"
 warnings.filterwarnings("ignore")
 
 
@@ -42,7 +40,20 @@ parser.add_argument(
     type=int,
 )
 
-parser.add_argument("-step", help="enable twostep. used in conjuction with -m fourier", dest="step", action="store_true")
+parser.add_argument(
+    "-inj",
+    help="an injection-recovery test",
+    dest="inj",
+    action="store_true",
+)
+
+
+parser.add_argument(
+    "-step",
+    help="enable twostep. used in conjuction with -m fourier",
+    dest="step",
+    action="store_true",
+)
 parser.add_argument("-p", help="enable plotting", action="store_true")
 parser.add_argument(
     "-metadata",
@@ -54,7 +65,12 @@ parser.add_argument(
 parser.add_argument("-nice", help="set niceness", dest="nice", default=8, type=int)
 
 
-parser.add_argument("-return_arraydata", help="save cleaned data arrays as .npz file", dest="return_arraydata", action="store_true")
+parser.add_argument(
+    "-return_arraydata",
+    help="save cleaned data arrays as .npz file",
+    dest="return_arraydata",
+    action="store_true",
+)
 
 parser.add_argument(
     "-m",
@@ -64,7 +80,7 @@ parser.add_argument(
     type=str,
 )
 
-parser.add_argument("-n", help='does not save output file', action="store_true")
+parser.add_argument("-n", help="does not save output file", action="store_true")
 
 # Get directories from command line arguments.
 args = parser.parse_args()
@@ -86,9 +102,10 @@ except RuntimeError:  # there might be a timeout sometimes.
 m = multiprocessing.Manager()
 lock = m.Lock()
 
-#pipeline_options = {"xrp":".pkl","spoc":".fits"}
+# pipeline_options = {"xrp":".pkl","spoc":".fits"}
 
-def run_lc(f_path, get_metadata=args.metadata,return_arraydata=args.return_arraydata):
+
+def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arraydata):
     try:
         f = os.path.basename(f_path)
         print(f_path)
@@ -97,37 +114,59 @@ def run_lc(f_path, get_metadata=args.metadata,return_arraydata=args.return_array
                 f_path,
                 sector=sector,
                 clip=args.c,
+                inj = args.inj
             )
-            table = table["time", args.f, "quality"]
+
+            if args.inj:
+                table = table["time", "injected_flux", "quality", "flux error"]
+
+            table = table["time", args.f, "quality", "flux error"]
 
         else:
             table, lc_info = import_lightcurve(f_path, flux=args.f)
-            table = table['TIME',args.f,'QUALITY']
+            # table = table["TIME", args.f, "QUALITY","PDSCAP_FLUX_ERR"]
         result_str, save_data = processing(
             table, f_path, lc_info, method=args.m, make_plots=args.p, twostep=args.step
         )
 
         try:
-            os.makedirs("output_log")  
-            #os.makedirs("lc_metadata")
+            os.makedirs("output_log")
+            # os.makedirs("lc_metadata")
         except FileExistsError:
             pass
         try:
             os.makedirs("lc_metadata")
         except FileExistsError:
             pass
-        
+
         if return_arraydata:
-            obj_id = lc_info[0]
+            if f_path.endswith(".pkl"):
+                obj_id = lc_info[1]
+            else:
+                obj_id = lc_info[1]
             try:
                 os.makedirs(f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/")
             except FileExistsError:
                 pass
             try:
-                os.makedirs(f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}")
+                os.makedirs(
+                    f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}"
+                )
             except FileExistsError:
                 pass
-            np.savez(f'/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}/tesslc_{obj_id}.npz',obj_id=obj_id,time=save_data[0],flux=save_data[1],trend_flux=save_data[2], quality=save_data[3])#,agg_flux=flux_aggressive_filter,agg_trend_flux=trend_flux_aggressive_filter,quality=quality)
+            except NameError:
+                sector = input("sector:")
+                os.makedirs(
+                    f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}"
+                )
+            np.savez(
+                f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}/tesslc_{obj_id}.npz",
+                obj_id=obj_id,
+                time=save_data[0],
+                flux=save_data[1],
+                trend_flux=save_data[2],
+                quality=save_data[3],
+            )  # ,agg_flux=flux_aggressive_filter,agg_trend_flux=trend_flux_aggressive_filter,quality=quality)
 
         if args.n:
             return
@@ -139,9 +178,10 @@ def run_lc(f_path, get_metadata=args.metadata,return_arraydata=args.return_array
             out_file.write(result_str + "\n")
         if get_metadata:
             with open(
-                os.path.join("lc_metadata/", f"metadata_sector_{sector}.txt"),"a") as out_file2:
+                os.path.join("lc_metadata/", f"metadata_sector_{sector}.txt"), "a"
+            ) as out_file2:
                 out_file2.write(f + " " + lc_info + " " + f"{sector}" + "\n")
-                
+
         lock.release()
     except (KeyboardInterrupt, SystemExit):
         print("Process terminated early, exiting", file=sys.stderr)
@@ -150,32 +190,47 @@ def run_lc(f_path, get_metadata=args.metadata,return_arraydata=args.return_array
         print("\nError with file " + f_path, file=sys.stderr)
         traceback.print_exc()
 
+def injected_transit_processing(path):
+    print(os.path.join(args.path,path))
+    data = pd.read_csv(os.path.join(args.path,path))
+    data = Table.from_pandas(data)
+    data = data[['time','injected_dip_flux','quality','flux error']]
+    results, data_arrays = processing(data,path,method=args.m,save=True)
+
+
+
 
 if __name__ == "__main__":
     start_time = time.time()
-    try:
-        if "sector" in args.path[0]:
-            sector = int(os.path.split(args.path[0])[0].split("sector")[1].split("_")[1])
-            print(sector)
-    except:
-        pass
+    if "sector" in args.path[0]:
+        sector = int(os.path.split(args.path[0])[0].split("sector")[1].split("_")[1])
+        print(sector)
+    else:
+        sector = int(input("sector: "))
 
     pool = multiprocessing.Pool(processes=args.threads)
 
     for path in paths:
         if not os.path.isdir(path):
             if os.path.isfile(path):
-                run_lc(path,args.metadata)
+                run_lc(path, args.metadata)
+
                 sys.exit()
 
         # if we are in the lowest subdirectory, perform glob this way.
+
         if not list(folders_in(path)):
+
+            if args.inj:
+                files = glob.glob(os.path.join(path, "*.csv"))
+                pool.map(injected_transit_processing,files)
+
             print("this is the lowest subdirectory. running the search...")
 
             # works for both Kepler and TESS fits files.
             fits = glob.glob(os.path.join(path, "*lc.fits"))
             pkl = glob.glob(os.path.join(path, "*.pkl"))
-            npz = glob.glob(os.path.join(path,"*.npz")) # for fake transits
+            npz = glob.glob(os.path.join(path, "*.npz"))  # for fake transits
 
             pool.map(run_lc, pkl)
             pool.map(run_lc, fits)

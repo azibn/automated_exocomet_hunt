@@ -75,7 +75,7 @@ A_mag = np.abs(np.fft.rfft(flux))
 
 flux_ls = np.copy(flux)
 
-# freq, powers = lombscargle_plotting(t,flux_ls,real,0.1)
+freq, powers = lombscargle_plotting(t, flux_ls, real, 0.1)
 lombscargle_filter(t, flux_ls, real, 0.15)  # happens in-place. 0.05 is minimum score
 
 periodicnoise_ls = flux - flux_ls
@@ -123,6 +123,7 @@ if (
     y2 = -gauss(t2, *paramsgauss)
     paramscomet = comet_curve_fit(t2, -x2)
     w2 = -comet_curve(t2, *paramscomet)
+    print(comet_curve)
     scores = [score_fit(x2, fit) for fit in [y2, w2]]
     print("Asym score:", round(scores[0] / scores[1], 4))
 
@@ -193,4 +194,4 @@ except:
 if args.n:
     sys.exit()
 
-fig2.savefig(f"plots/lightcurve.png",dpi=300)
+fig1.savefig(f"plots/lightcurve.png", dpi=300)

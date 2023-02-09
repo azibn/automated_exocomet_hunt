@@ -19,7 +19,6 @@ def get_output(file_path):
     elif file_path.endswith(".txt"):
         df = pd.read_csv(file_path, sep=" ", header=None)
 
-
     cols = [
         "file",
         "signal",
@@ -52,17 +51,7 @@ def get_metadata(file_path):
     elif file_path.endswith(".txt"):
         df = pd.read_csv(file_path, sep=" ", header=None)
 
-
-    cols = [
-        "file",
-        "ticid",
-        "ra",
-        "dec",
-        "magnitude",
-        "camera",
-        "chip",
-        "sector"
-    ]
+    cols = ["file", "ticid", "ra", "dec", "magnitude", "camera", "chip", "sector"]
     df.columns = cols
     return df
 
@@ -147,7 +136,7 @@ def filter_df(df, signal=5, min_asym_score=-0.5, max_asym_score=2.0, duration=0.
     ]
 
 
-def distribution(x, y,savefig=False,savefig_path="distribution.png"):
+def distribution(x, y, savefig=False, savefig_path="distribution.png"):
     # box = df[y <= -7.4) & (x >= 1.30) & (df['transit_prob'] == 'maybeTransit') & (x <= 1.60) & (y >= -12)]
     """plots asymmetry score vs signal/noise over a signal of 5"""
     fig, ax = plt.subplots(figsize=(10, 7))
@@ -158,15 +147,15 @@ def distribution(x, y,savefig=False,savefig_path="distribution.png"):
     ax.set_xlabel("$\\alpha$", fontsize=12)
     ax.set_ylabel("$S$", fontsize=12)
 
-    #ax.xaxis.label.set_color("white")  # setting up X-axis label color to yellow
-    #ax.yaxis.label.set_color("white")  # setting up Y-axis label color to blue
-    #ax.tick_params(axis="x", colors="white")  # setting up X-axis tick color to red
-    #ax.tick_params(axis="y", colors="white")
+    # ax.xaxis.label.set_color("white")  # setting up X-axis label color to yellow
+    # ax.yaxis.label.set_color("white")  # setting up Y-axis label color to blue
+    # ax.tick_params(axis="x", colors="white")  # setting up X-axis tick color to red
+    # ax.tick_params(axis="y", colors="white")
 
-    #ax.spines["left"].set_color("white")  # setting up Y-axis tick color to red
-    #ax.spines["top"].set_color("white")
-    #ax.spines["right"].set_color("white")  # setting up Y-axis tick color to red
-    #ax.spines["bottom"].set_color("white")
+    # ax.spines["left"].set_color("white")  # setting up Y-axis tick color to red
+    # ax.spines["top"].set_color("white")
+    # ax.spines["right"].set_color("white")  # setting up Y-axis tick color to red
+    # ax.spines["bottom"].set_color("white")
     fig.tight_layout()
     if savefig:
-        fig.savefig(savefig_path,dpi=300)
+        fig.savefig(savefig_path, dpi=300)

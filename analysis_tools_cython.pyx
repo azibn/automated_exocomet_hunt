@@ -67,7 +67,7 @@ def import_eleanor(tic,sector=None):
     df.columns = columns
     return df
 
-def import_XRPlightcurve(file_path,sector: int,clip=3,flux=None,drop_bad_points=True,ok_flags=[],return_type='astropy'):
+def import_XRPlightcurve(file_path,sector: int,clip=3,flux=None,drop_bad_points=True,ok_flags=[],return_type='astropy',inj=False):
     """
     file_path: path to file (takes pkl and csv)
     sector = lightcurve sector
@@ -102,17 +102,30 @@ def import_XRPlightcurve(file_path,sector: int,clip=3,flux=None,drop_bad_points=
         df.columns = columns
         info = lc[0:6].append(sector)
 
-    else:
+        table = Table.from_pandas(df)
+
+    elif inj:
         # think about how many tic id's will be here; should there be a for loop to iterate etc?
-        tic = pd.read_csv(file_path)
-        star = eleanor.Source(tic=tic, sector=sector) # specifies sector. If you want the latest sector, sector=None
-        api_data = eleanor.TargetData(star, height=15, width=15, bkg_size=31, do_psf=False, do_pca=True, regressors='corner')
-        df = pd.DataFrame([api_data.time,api_data.corr_flux,api_data.quality]).T
-        columns = ['time','corrected flux','quality']
+        df = pd.read_csv(file_path)
+        
+        columns = [
+            "time",
+            "raw flux",
+            "corrected flux",
+            "PCA flux",
+            "flux error",
+            "injected_flux",
+        ]
         df.columns = columns
+        #tic = pd.read_csv(file_path)
+        #star = eleanor.Source(tic=tic, sector=sector) # specifies sector. If you want the latest sector, sector=None
+        #api_data = eleanor.TargetData(star, height=15, width=15, bkg_size=31, do_psf=False, do_pca=True, regressors='corner')
+        #df = pd.DataFrame([api_data.time,api_data.corr_flux,api_data.quality]).T
+        #columns = ['time','corrected flux','quality']
+       
 
-
-    table = Table.from_pandas(df)
+        table = Table.from_pandas(df)
+        return table
 
     # loading Ethan Kruse bad times
     bad_times = data.load_bad_times()
@@ -194,15 +207,15 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
     scidata = hdulist[1].data
 
     if 'kplr' in file_path:
-        table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+        table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY','SAP_FLUX_ERR']
         info = [objdata['OBJECT'],objdata['KEPLERID'],objdata['KEPMAG'],objdata['QUARTER'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
     elif 'ktwo' in file_path:
-        table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY']
+        table = Table(scidata)['TIME','PDCSAP_FLUX','SAP_QUALITY','PDSCAP_FLUX_ERR']
         info = [objdata['OBJECT'],objdata['KEPLERID'],objdata['KEPMAG'],objdata['CAMPAIGN'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
     elif 'tasoc' in file_path:
         table = Table(scidata)['TIME','FLUX_CORR','QUALITY']
     else:
-        table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY']
+        table = Table(scidata)['TIME','PDCSAP_FLUX','QUALITY','PDCSAP_FLUX_ERR']
         info = [objdata['OBJECT'],objdata['TICID'],objdata['TESSMAG'],objdata['SECTOR'],objdata['CAMERA'],objdata['CCD'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
     #except:
         #table = Table(scidata)['TIME','SAP_FLUX','QUALITY']
@@ -279,15 +292,17 @@ def clean_data(table):
     flux = []
     quality = []
     real = []
+    flux_error = []
     timestep = calculate_timestep(table)
 
     for row in table:
-        ti, fi, qi = row
+        ti, fi, qi, fei = row
 
         if len(time) > 0:
             steps = int(round( (ti - time[-1])/timestep )) # (y2-y1)/(x2-x1)
             if steps > 1:
                 fluxstep = (fi - flux[-1])/steps
+                fluxerror_step = (fei - flux_error[-1]/steps)
                 # For small gaps, pretend interpolated data is real.
                 if steps > 2:
                     set_real=0
@@ -297,13 +312,15 @@ def clean_data(table):
                 for _ in range(steps-1):
                     time.append(timestep + time[-1])
                     flux.append(fluxstep + flux[-1])
+                    flux_error.append(fluxerror_step + flux_error[-1])
                     quality.append(0)
                     real.append(set_real)
         time.append(ti)
         flux.append(fi)
         quality.append(qi)
         real.append(1)
-    return [np.array(x) for x in [time,flux,quality,real]]
+        flux_error.append(fei)
+    return [np.array(x) for x in [time,flux,quality,real,flux_error]]
 
 
 def normalise_flux(flux):
@@ -552,7 +569,7 @@ def classify(m,n,real,asym):
         return "maybeTransit"
 
 
-def calc_shape(m,n,time,quality,flux,cutout_half_width=3,
+def calc_shape(m,n,time,quality,flux,cutout_half_width=5,
                n_m_bg_start=3, n_m_bg_end=1):
     """Fit both symmetric and comet-like transit profiles and compare fit.
     Returns:
@@ -587,7 +604,7 @@ def calc_shape(m,n,time,quality,flux,cutout_half_width=3,
         bg_t2 = np.mean(t[(2*w-n_m_bg_end)*m:])
         grad = (bg_l2-bg_l1)/(bg_t2-bg_t1)
         background_level = bg_l1 + grad * (t - bg_t1)
-        #x -= background_level
+        x -= background_level
 
         try:
             params1, pcov1 = single_gaussian_curve_fit(t,-x)
@@ -597,14 +614,33 @@ def calc_shape(m,n,time,quality,flux,cutout_half_width=3,
 
         fit1 = -gauss(t,*params1)
         fit2 = -comet_curve(t,*params2)
+        depth = fit2.min()
 
         scores = [score_fit(x,fit) for fit in [fit1,fit2]]
         if scores[1] > 0:
-            return scores[0]/scores[1], params2[2], params2[3], [t,x,q,fit1,fit2,background_level,pcov1,pcov2]
+            return scores[0]/scores[1], params2[2], params2[3], [t,x,q,fit1,fit2,background_level,pcov1,pcov2, depth]
         else:
-            return -1,-1,-1
-    else:
-        return -2,-2,-2
+            t = ''                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+            x = ''
+            q = ''
+            fit1 = ''
+            fit2 = ''
+            background_level = ''
+            pcov1 = ''
+            pcov2 = ''
+            depth = 0.0000000000
+            return -1,-1,-1, [t,x,q,fit1,fit2,background_level,pcov1,pcov2, depth]
+    else:     
+        t = ''                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+        x = ''
+        q = ''
+        fit1 = ''
+        fit2 = ''
+        background_level = ''
+        pcov1 = ''
+        pcov2 = ''
+        depth = 0.0000000000
+        return -2,-2,-2, [t,x,q,fit1,fit2,background_level,pcov1,pcov2, depth]
 
 def d2q(d):
     '''Convert Kepler day to quarter'''
@@ -643,13 +679,6 @@ def calc_mstatistic(flux):
     diff = np.round((avg-np.mean(ext_flux))/stdev, 3)  # ! The M Statistic
     return diff
 
-def get_flux(table):
-    """returns flux array depending on lightcurve pipeline"""
-    return table[table.colnames[1]]
-
-def get_time(table):
-    """returns time array depending on lightcurve pipeline"""
-    return table[table.colnames[0]]
 
 
 def smoothing(table,method,window_length=2.5,power=0.08):
@@ -659,16 +688,13 @@ def smoothing(table,method,window_length=2.5,power=0.08):
     wotan options: 'biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline','savgol'.
     """
     wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline','savgol']
-    t = get_time(table)
-    flux = get_flux(table)
 
-    if method is None:
-        return flux, None
+
     if method in wotan_methods:
-        flattened_flux, trend_lc = flatten(time=t,flux=flux,method=method,window_length=window_length,return_trend=True)
+        flattened_flux, trend_lc = flatten(table[table.colnames[0]],table[table.colnames[1]],method=method,window_length=window_length,return_trend=True)
         return flattened_flux, trend_lc 
     elif (method == 'lomb-scargle') or (method == 'fourier'): # this block of code is the same for methods 1 and 2
-        t, flux, quality, real = clean_data(table)
+        t, flux, quality, real, flux_error = clean_data(table)
         flux = normalise_flux(flux)
         flux_ls = np.copy(flux)
         lombscargle_filter(t,flux_ls,real,power) 
@@ -690,7 +716,7 @@ def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     final_flux *= real
     return final_flux, periodicnoise_ls2, original_masked_flux
 
-def processing(table,f_path,lc_info=None,method=None,make_plots=False,twostep=False,return_arraydata=False): 
+def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False,twostep=False,return_arraydata=False): 
     """the main bulk of the search algorithm.
     inputs:
     - :table: lightcurve table containing time, flux and quality (needs to only be these three columns)
@@ -698,28 +724,49 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,twostep=Fa
     - :lc_info: metadata about the lightcurve. Default is None.
     - :method: Choice of smoothing method for lightcurves. Default is None.
     - :make_plots: Create gridspec-based visualisation. Contents include plots of the lightcurve (pre and post-cleaning), the T-statistic of the lightcurve, its position on the SNR/alpha distribution and a zoomed-in transit of potential candidates. 
-    
+    - The lightcurve/table needs to be in the format of time, flux, quality, flux error.
     """
     f = os.path.basename(f_path)
-    obj_id = lc_info[0]
-    
+    try:
+        obj_id = lc_info[0]
+    except TypeError:
+        obj_id = f_path.split('_')[-1]
+
+    if isinstance(table, pd.DataFrame):
+        table = Table.from_pandas(table)
+
     if len(table) > 120: # 120 represents 2.5 days
 
         # smoothing operation and normalisation of flux
         ## note: since Wotan performs time-windowed smoothing without the need for interpolation, `clean_data` is placed after the smoothing step to create interpolated points at data gaps (purely for visual benefit). 
        
         wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
-        if method in wotan_methods:
-            flat_flux, trend_flux = smoothing(table,method=method)
-            table[table.colnames[1]] = flat_flux - np.ones(len(flat_flux))
-            t, flux, quality, real = clean_data(table)
-            flux *= real
+        if method != None:
+            if method in wotan_methods:
+                flat_flux, trend_flux = smoothing(table,method=method)
+                a = Table()
+                a['time'] = table[table.colnames[0]]
+                a['flux'] = flat_flux - np.ones(len(flat_flux))
+                a['quality'] = table[table.colnames[2]]
+                a['flux_error'] = table[table.colnames[3]]
+                #table[table.colnames[1]] = flat_flux - np.ones(len(flat_flux)) # resets normalisation to zero instead of one.
+                t, flux, quality, real, error = clean_data(a)
+                flux *= real
 
-        else: 
-            t, flux, quality, real = clean_data(table)
-            flux, trend_flux = smoothing(table,method=method)
+            elif (method == 'lomb-scargle') or (method == 'fourier'): # this block of code is the same for methods 1 and 2
+                t, flux, quality, real, flux_error = clean_data(table)
+                flux = normalise_flux(flux)
+                flux_ls = np.copy(flux)
+                lombscargle_filter(t,flux_ls,real,0.08) 
+                trend_flux = flux - flux_ls 
+                flux_ls *= real
+                #return flux_ls, periodicnoise_ls # returns one-step Lomb Scargle
 
-    
+        else:
+            t, flux, quality, real, error = clean_data(table)
+            flux = normalise_flux(flux)
+            flux*=real
+
 
         timestep = calculate_timestep(table)
         factor = ((1/48)/timestep)
@@ -735,6 +782,7 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,twostep=Fa
 
         ## fourier and Lomb-Scargle
         A_mag = np.abs(np.fft.rfft(normalise_flux(flux)))
+
         freq, powers = LombScargle(t,flux).autopower() # think about that one
         peak_power = powers.max()
 
@@ -786,35 +834,33 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,twostep=Fa
             Tm_end = Tm_start + m
             Tm_depth = flux[Tm_start:Tm_end].mean() 
             Ts = nonzero(T2[m]).std()
-        try:
-            asym, width1, width2, info = calc_shape(m,n,t,quality,flux) # check why flux; plotting purposes?
-            s = classify(m,n,real,asym)
+ 
+        asym, width1, width2, info = calc_shape(m,n,t,quality,flux,cutout_half_width=5)
+        depth = info[-1]
+        s = classify(m,n,real,asym)
             
-        except ValueError:
-            asym, width1, width2 = calc_shape(m,n,t,quality,flux)
-            s = classify(m,n,real,asym) 
+        ## except ValueError:
+        ##     asym, width1, width2 = calc_shape(m,n,t,quality,flux,cutout_half_width=5)
+        ##     s = classify(m,n,real,asym) 
         
         result_str =\
                 f+' '+\
                 ' '.join([str(round(a,8)) for a in
                     [minT, minT/Ts, minT_time,
                     asym,width1,width2,
-                    minT_duration,Tm_depth,peak_power, M_stat]])+\
+                    minT_duration,depth, peak_power, M_stat]])+\
                 ' '+s
-        #pcov_gauss, pcov_comet = info[-2], info[-1]
-        # -2 == pcov of gaussian, -1 == pcov of comet 
+        
 
-        results = list(result_str)
         if make_plots:
+            ## Setup "pubication-ready" plots
+            plt.rc('font', family='serif')
+            
             try:
                 os.makedirs("plots") # make directory plot if it doesn't exist
             except FileExistsError:
                 pass
             columns = [
-                "file",
-                "time_arr",
-                "flux_arr",
-                "quality_arr",
                 "signal",
                 "snr",
                 "time",
@@ -830,48 +876,49 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,twostep=Fa
             ]
 
             fig = plt.figure(figsize=(19,8))
-            gs1 = fig.add_gridspec(22, 13,hspace=0.9,wspace=0.9)
+            gs1 = fig.add_gridspec(11,3 ,hspace=0.4,wspace=0.2)
             ax0 = plt.subplot(gs1[0:1,:]) # table of stats
             ax0.axis('off')
-            result_str_table = ax0.table(cellText=[result_str.split()], colLabels=columns, loc='center'
+            results_stats = result_str.split()[1:] # drop filename
+            result_str_table = ax0.table(cellText=[results_stats], colLabels=columns, loc='center'
             )
             result_str_table.scale(1.1,1)
             result_str_table.auto_set_font_size(False)
             result_str_table.set_fontsize(7)
-            ax1 = plt.subplot(gs1[2:5,:3]) # flux before + smoothing function
-            ax1.plot(t, normalise_flux(flux), label="flux")
-            try:
-                ax1.plot(t, normalise_flux(trend_flux), label="smoothing filter")
-            except:
-                pass
+            ax1 = plt.subplot(gs1[1:4,:2]) # flux before + smoothing function
+            ax1.scatter(table[table.colnames[0]], normalise_flux(table[table.colnames[1]]), s=10,alpha=0.6)
+            if method != None:
+                ax1.plot(table[table.colnames[0]], normalise_flux(trend_flux),color='orange', label="Trend")
+
             ax1.set_xlim(np.min(t),np.max(t))
-            ax1.title.set_text("Lightcurve and the Smoothing filter")
+            #ax1.title.set_text("Lightcurve and the Smoothing filter")
             ax1.set_ylabel("Normalised flux")
             ax1.legend(loc="lower left")
             plt.setp(ax1.get_xticklabels(), visible=False)
 
-            ax2 = plt.subplot(gs1[6:9,:3],sharex=ax1) # flux after
-            ax2.plot(t, final_flux,label = 'flux')
-            ax2.title.set_text("Smoothened Lightcurve")
+            ax2 = plt.subplot(gs1[4:7,:2],sharex=ax1) # smoothened flux
+            ax2.scatter(t, flux,s=10,alpha=0.6,label='smoothened flux')
+            #ax2.title.set_text("Smoothened Lightcurve")
             ax2.set_ylabel("Normalised flux")
             ax2.legend(loc="lower left")  
             plt.setp(ax2.get_xticklabels(), visible=False)
 
 
-            ax3 = plt.subplot(gs1[2:7,3:]) # transit shape
+            ax3 = plt.subplot(gs1[1:6,2:]) # transit shape
             try:
                 t2, x2, q2, y2, w2 = info[0],info[1],info[2],info[3],info[4]
-                ax3.plot(t2, info[-1]+1)
-                ax3.plot(t2, x2+1,label='flux') # flux
-                ax3.plot(t2,y2+1,label='gaussian curve') # gauss fit
-                ax3.plot(t2,w2+1,label='comet curve') # comet fit
-                ax3.set_title("Transit shape in box")
+                
+                ax3.plot(t2, x2,label='data') # flux
+                ax3.plot(t2,y2,label='gaussian model') # gauss fit
+                ax3.plot(t2,w2,label='comet model') # comet fit
+                ax3.plot(t2, info[5],label='background trend',color='black')
                 ax3.set_xlabel("Time - 2457000 (BTJD Days)")
-                ax3.set_ylabel("Normalised flux")
+                #ax3.set_ylabel("Normalised flux")
                 ax3.legend(loc="lower left")
             except:
                 pass
-            ax4 = plt.subplot(gs1[10:13,:3]) # imshow
+
+            ax4 = plt.subplot(gs1[7:10,:2]) # imshow
             im = ax4.imshow(
                 T1,
                 origin="bottom",
@@ -881,15 +928,13 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,twostep=Fa
             )
             ax4.set_xlabel("Time - 2457000 (BTJD Days)")
             ax4.set_ylabel("Transit width in days")
-            ax4.title.set_text("T-statistic of the lightcurve")
-            cbax = plt.subplot(gs1[14:15,:3]) # Place it where it should be.
-            cb = Colorbar(ax = cbax, mappable = im, orientation = 'horizontal', ticklocation = 'bottom')
+            #cbax = plt.subplot(gs1[10:11,:2]) # Place it where it should be.
+            #cb = Colorbar(ax = cbax, mappable = im, orientation = 'horizontal', ticklocation = 'bottom')
 
-
-            #df  = get_output("output_log/spoc_s6_median.txt")
+            #df  = get_output(f"output_log/spoc_s{}_median.txt")
             #obj_params = df.loc[df.file.str.contains("270577175")]
         
-            #ax5 = plt.subplot(gs1[9:15,3:])
+            #ax5 = plt.subplot(gs1[6:9,2:])
             #ax5.scatter(df.asym_score,abs(df['signal/noise']),alpha=0.3,s=2)
             #ax5.scatter(obj_params.asym_score,abs(obj_params['signal/noise']),color='k')
             #ax5.set_xlabel("Asymmetry Ratio")
@@ -914,43 +959,44 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,twostep=Fa
             #ax7.set_title("HR Diagram")
 
 
-            #customSimbad = Simbad()
-            #customSimbad.add_votable_fields("sptype","parallax")
+            customSimbad = Simbad()
+            customSimbad.add_votable_fields("sptype","parallax")
 
-            #if ".pkl" in f:
-            #    obj_id = "TIC" + str(obj_id)
-            #obj = customSimbad.query_object(obj_id).to_pandas().T
-            #obj_name, obj_sptype, obj_parallax = obj.loc['MAIN_ID'][0], obj.loc['SP_TYPE'][0],obj.loc['PLX_VALUE'][0]
-            #fig.suptitle(f" {obj_id}, {obj_name}, Spectral Type {obj_sptype}, Parallax {obj_parallax} (mas)", fontsize = 16,y=0.93)     
-            #fig.tight_layout()
-     
-            fig.savefig(f'plots/{obj_id}_twostep_{method}.png',dpi=300) 
+            # if ".pkl" in f:
+            #     obj_id = "TIC" + str(obj_id)
+  
+            # try:
+            #     obj = customSimbad.query_object(obj_id).to_pandas().T
+            #     obj_name, obj_sptype, obj_parallax = obj.loc['MAIN_ID'][0], obj.loc['SP_TYPE'][0],obj.loc['PLX_VALUE'][0]
+            #     fig.suptitle(f" {obj_id}, {obj_name}, Spectral Type {obj_sptype}, Parallax {obj_parallax} (mas)", fontsize = 16,y=0.93)     
+            #     fig.tight_layout()
+            # except UnboundLocalError:
+            #     print("object ID not found.")
+            #     fig.suptitle("ID not identified.",fontsize = 16,y=0.93)
+            #     pass
+
+            if save:
+                try:
+                    fig.savefig(f'plots/{obj_id}_5_halfwidth.png',dpi=300) 
+                except:
+                    fig.savefig(f'plots/test_lightcurve.png',dpi=300) 
 
             #if twostep:
             #    fig.savefig(f'plots/{obj_id}_twostep_{method}.png',dpi=300)  
             #else:
             #    fig.savefig(f'plots/{obj_id}_twostep_{method}.png',dpi=300)  
 
-            plt.close()
+            plt.show()
         
 
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
 
     
-    ## saving to storage directory on the csc. For more general purposes, this should be changed to lc_arraydata/ ...
-    #if return_arraydata:
-    #    try:
-    #        os.makedirs(f"/storage/astro2/phrdhx/tesslcs/lc_arraydata")
-    #    except FileExistsError:
-    #        pass
-    #    np.savez(f'/storage/astro2/phrdhx/tesslcs/lc_arraydata/tesslc_{obj_id}.npz',obj_id=obj_id,time=t,flux=final_flux,trend_flux=trend_flux,agg_flux=flux_aggressive_filter,agg_trend_flux=trend_flux_aggressive_filter,quality=quality)
-    
-    #del final_flux
-    #del flux_aggressive_filter
-    #del trend_flux
-    #del trend_flux_aggressive_filter
-    return result_str, [t, flux, trend_flux, quality]
+    if method == None:
+        return result_str, [t, flux, quality]
+    else:
+        return result_str, [t, flux, trend_flux, quality]
 
 
 

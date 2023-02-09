@@ -1,31 +1,51 @@
 # Build files
 analysis_tools_cython.c*
 build
-.nfs00000000027697d50000005e
-.nfs00000000028f4f1f0000012e
+.nfs*
 .vscode/
 
 # old Kepler files
 archive_analyse.sh
 
+# Jupyter notebooks
+notebooks/
+
 # Data folders
-results
+lc_arraydata/
+lc_metadata/
 tess2018206045859-s0001-0000000024265755-0120-s_lc.fits
 tess_SPOC/
 tess_testlcs/
 betapic/
 kepler/
 gif/
-mad_figs
-lightcurves/
-lightcurves_s1/
+data/
+catalogs/
+candidates/
+umap_projections/
+mastDownload/
+
+# plots
+plot*
+*.png
+# poster
+
+# xrp files
+qstat.py
+s6stat.csv
 
 # output files
 output*
-plot*
 
 # batch_analyse_v2
 batch_reanalyse_asym.py
+
+# tests
+test*
+
+# injection recovery stuff
+injection*
+
 
 # Temp vim files
 *.swp
