@@ -11,7 +11,12 @@ import warnings
 import numpy as np
 import pandas as pd
 from astropy.table import Table
-from analysis_tools_cython import import_XRPlightcurve, import_lightcurve, processing, folders_in
+from analysis_tools_cython import (
+    import_XRPlightcurve,
+    import_lightcurve,
+    processing,
+    folders_in,
+)
 
 os.environ["OMP_NUM_THREADS"] = "1"
 warnings.filterwarnings("ignore")
@@ -111,10 +116,7 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
         print(f_path)
         if f_path.endswith(".pkl"):
             table, lc_info = import_XRPlightcurve(
-                f_path,
-                sector=sector,
-                clip=args.c,
-                inj = args.inj
+                f_path, sector=sector, clip=args.c, inj=args.inj
             )
 
             if args.inj:
@@ -190,14 +192,13 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
         print("\nError with file " + f_path, file=sys.stderr)
         traceback.print_exc()
 
+
 def injected_transit_processing(path):
-    print(os.path.join(args.path,path))
-    data = pd.read_csv(os.path.join(args.path,path))
+    print(os.path.join(args.path, path))
+    data = pd.read_csv(os.path.join(args.path, path))
     data = Table.from_pandas(data)
-    data = data[['time','injected_dip_flux','quality','flux error']]
-    results, data_arrays = processing(data,path,method=args.m,save=True)
-
-
+    data = data[["time", "injected_dip_flux", "quality", "flux error"]]
+    results, data_arrays = processing(data, path, method=args.m, save=True)
 
 
 if __name__ == "__main__":
@@ -223,7 +224,7 @@ if __name__ == "__main__":
 
             if args.inj:
                 files = glob.glob(os.path.join(path, "*.csv"))
-                pool.map(injected_transit_processing,files)
+                pool.map(injected_transit_processing, files)
 
             print("this is the lowest subdirectory. running the search...")
 

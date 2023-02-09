@@ -1,5 +1,6 @@
 import argparse
 import os
+
 os.environ["OMP_NUM_THREADS"] = "1"
 import multiprocessing
 import pickle
@@ -16,8 +17,9 @@ import glob
 
 parser = argparse.ArgumentParser(description="Binning data and creating heatmap")
 parser.add_argument(help="target directory(s)", default=".", nargs="+", dest="path")
-parser.add_argument("-o",help="output image",default="recovery_map.png",dest="o")
+parser.add_argument("-o", help="output image", default="recovery_map.png", dest="o")
 args = parser.parse_args()
+
 
 def plot_heatmap(data):
     """
@@ -36,8 +38,8 @@ def plot_heatmap(data):
 
     ## setting axes and bins
     ### log depths
-    depth_edges = np.logspace(0.995,1,num=20)/10 ### 20 bins
-    #depth_edges = np.array([-0.012, -0.01, -0.008, -0.006, -0.004, -0.002, 0]) + 1
+    depth_edges = np.logspace(0.995, 1, num=20) / 10  ### 20 bins
+    # depth_edges = np.array([-0.012, -0.01, -0.008, -0.006, -0.004, -0.002, 0]) + 1
     # depth_edges = np.array([-0.013,-0.012,-0.011,-0.01,-0.009,-0.008,-0.007,-0.006,-0.005,-0.004,-0.003,-0.002,-0.001,0])
     nbins_depth = len(depth_edges) - 1
     mag_edges = np.arange(6, 16, 1)
@@ -86,23 +88,25 @@ def plot_heatmap(data):
     plt.savefig(args.o, dpi=400)
     plt.close()
 
-if __name__ == '__main__':
-    
+
+if __name__ == "__main__":
+
     cols = [
-    "file",
-    "signal",
-    "snr",
-    "time",
-    "asym_score",
-    "width1",
-    "width2",
-    "duration",
-    "depth",
-    "peak_lspower",
-    "mstat",
-    "transit_prob",
-    "recovered",
-    "mag"]
+        "file",
+        "signal",
+        "snr",
+        "time",
+        "asym_score",
+        "width1",
+        "width2",
+        "duration",
+        "depth",
+        "peak_lspower",
+        "mstat",
+        "transit_prob",
+        "recovered",
+        "mag",
+    ]
 
     li = []
     files = glob.glob("injection_test_tmag_*")
@@ -118,4 +122,3 @@ if __name__ == '__main__':
         pass
     plot_heatmap(data)
     print("heatmap created.")
-
