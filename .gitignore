@@ -32,7 +32,7 @@ plot*
 
 # xrp files
 qstat.py
-s6stat.csv
+s6stat*
 
 # output files
 output*
