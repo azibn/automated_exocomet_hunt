@@ -24,6 +24,7 @@ dependencies:
   - tqdm
   - pickle5
   - pip
+  - pylint
   - umap-learn
   - pip:
     - lightkurve>=2

@@ -1,22 +1,15 @@
 import argparse
 import os
+import multiprocessing
+import math
+import random
+import sys
+import numpy as np
+import pandas as pd
+from astropy.table import Table
+from analysis_tools_cython import *
 
 os.environ["OMP_NUM_THREADS"] = "1"
-import multiprocessing
-import pickle
-import numpy as np
-import math
-import pandas as pd
-import random
-import matplotlib.pyplot as plt
-import traceback
-from analysis_tools_cython import *
-from astropy.table import Table
-from numba import jit
-import sys
-import glob
-
-random.seed(42)
 
 
 parser = argparse.ArgumentParser(description="Injection Testing")
@@ -34,7 +27,7 @@ parser.add_argument(
     "-number",
     help="How many lightcurves to randomise. default is None",
     dest="number",
-    default=500,
+    default=1000,
     type=int,
 )
 parser.add_argument(
@@ -66,7 +59,7 @@ def select_lightcurves(path):
     """returns a sample of random lightcures in the directory. Can be randomised by either number of ligthcurves or percentage of lightcurve files in the directory."""
     if args.number:
         return random.sample(os.listdir(path), args.number)
-    elif args.percentage:
+    if args.percentage:
         return random.sample(
             os.listdir(path), int(len(os.listdir(path)) * args.percentage)
         )
@@ -135,10 +128,18 @@ def run_search(path, save_csv=args.save_csv):
 
         data = Table.from_pandas(data)
         data = data[["time", "injected_dip_flux", "quality", "flux error"]]
-        results = processing(data, path, lc_info, method="median", make_plots=True)[0]
+        results, data_arrays = processing(data, path, lc_info, method="median")
+        try:
+            os.makedirs('injection_recovery_data_arrays/')
+        except FileExistsError:
+            pass
+        try:
+            np.savez(f'injection_recovery_data_arrays/{i}.npz', time=data_arrays[0], flux=data_arrays[1], trend_flux = data_arrays[2], quality = data_arrays[3])      
+        except:
+            np.savez(f'injection_recovery_data_arrays/{i}.npz', time=data_arrays[0], flux=data_arrays[1], quality = data_arrays[2])      
         results = results.split()
-        recovered_time = float(results[2])
-        recovered_depth.append(results[7])
+        recovered_time = float(results[3])
+        recovered_depth.append(results[8])
         results_for_binning.append(results)
 
         data = data.to_pandas()
@@ -157,7 +158,7 @@ def run_search(path, save_csv=args.save_csv):
 
         if (
             recovered_range.values[0] <= recovered_time <= recovered_range.values[-1]
-        ) & (abs(percentage_change) <= 60):
+        ) & (abs(percentage_change) <= 50):
             recovered = 1
             recovered_or_not.append(recovered)
         else:
@@ -243,6 +244,6 @@ if __name__ == "__main__":
         else:
             print("path is ", path)
 
-            filyes = select_lightcurves_multiple_directories(path)
+            files = select_lightcurves_multiple_directories(path)
             print("running the injected search...")
             print(files)

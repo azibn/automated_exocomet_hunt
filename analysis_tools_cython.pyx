@@ -569,8 +569,7 @@ def classify(m,n,real,asym):
         return "maybeTransit"
 
 
-def calc_shape(m,n,time,quality,flux,cutout_half_width=5,
-               n_m_bg_start=3, n_m_bg_end=1):
+def calc_shape(m,n,time,quality,flux,cutout_half_width=3):
     """Fit both symmetric and comet-like transit profiles and compare fit.
     Returns:
     (1) Asymmetry: ratio of (errors squared)
@@ -586,6 +585,9 @@ def calc_shape(m,n,time,quality,flux,cutout_half_width=5,
 
     """
     w = cutout_half_width
+    ## how many transit widths to take the general linear trend from. start is 1/4 length of cutout from beginning, end is 1 from end.
+    n_m_bg_start = w/4
+    n_m_bg_end = w/8
     if n-w*m >= 0 and n+w*m < len(time):
         t = time[n-w*m:n+w*m] # time
         if (t[-1]-t[0]) / np.median(np.diff(t)) / len(t) > 1.5:
@@ -598,10 +600,10 @@ def calc_shape(m,n,time,quality,flux,cutout_half_width=5,
         x = flux[n-w*m:n+w*m] # flux
         q = quality[n-w*m:n+w*m]
         # background_level = (sum(x[:m]) + sum(x[(2*w-1)*m:]))/(2*m)
-        bg_l1 = np.mean(x[:n_m_bg_start*m])
-        bg_t1 = np.mean(t[:n_m_bg_start*m])
-        bg_l2 = np.mean(x[(2*w-n_m_bg_end)*m:])
-        bg_t2 = np.mean(t[(2*w-n_m_bg_end)*m:])
+        bg_l1 = np.mean(x[:int(n_m_bg_start*m)])
+        bg_t1 = np.mean(t[:int(n_m_bg_start*m)])
+        bg_l2 = np.mean(x[(2*w-int(n_m_bg_end*m)):])
+        bg_t2 = np.mean(t[(2*w-int(n_m_bg_end*m)):])
         grad = (bg_l2-bg_l1)/(bg_t2-bg_t1)
         background_level = bg_l1 + grad * (t - bg_t1)
         x -= background_level
@@ -618,29 +620,13 @@ def calc_shape(m,n,time,quality,flux,cutout_half_width=5,
 
         scores = [score_fit(x,fit) for fit in [fit1,fit2]]
         if scores[1] > 0:
-            return scores[0]/scores[1], params2[2], params2[3], [t,x,q,fit1,fit2,background_level,pcov1,pcov2, depth]
+            return scores[0]/scores[1], params2[2], params2[3], [t,x,q,fit1,fit2,background_level,depth]
         else:
-            t = ''                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
-            x = ''
-            q = ''
-            fit1 = ''
-            fit2 = ''
-            background_level = ''
-            pcov1 = ''
-            pcov2 = ''
-            depth = 0.0000000000
-            return -1,-1,-1, [t,x,q,fit1,fit2,background_level,pcov1,pcov2, depth]
+
+            return -1,-1,-1
     else:     
-        t = ''                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
-        x = ''
-        q = ''
-        fit1 = ''
-        fit2 = ''
-        background_level = ''
-        pcov1 = ''
-        pcov2 = ''
-        depth = 0.0000000000
-        return -2,-2,-2, [t,x,q,fit1,fit2,background_level,pcov1,pcov2, depth]
+
+        return -2,-2,-2
 
 def d2q(d):
     '''Convert Kepler day to quarter'''
@@ -834,14 +820,21 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
             Tm_end = Tm_start + m
             Tm_depth = flux[Tm_start:Tm_end].mean() 
             Ts = nonzero(T2[m]).std()
+
+        ### this try except is done for the cases where calc_shape returns -3, -4 or -5.
+
+        try:
  
-        asym, width1, width2, info = calc_shape(m,n,t,quality,flux,cutout_half_width=5)
-        depth = info[-1]
-        s = classify(m,n,real,asym)
+            asym, width1, width2, info = calc_shape(m,n,t,quality,flux)
+            depth = info[-1]
+            s = classify(m,n,real,asym)
+
+        except ValueError:
+            print(calc_shape(m,n,t,quality,flux))
+            asym, width1, width2 = calc_shape(m,n,t,quality,flux)
+            depth = 0.00000000
+            s = classify(m,n,real,asym)
             
-        ## except ValueError:
-        ##     asym, width1, width2 = calc_shape(m,n,t,quality,flux,cutout_half_width=5)
-        ##     s = classify(m,n,real,asym) 
         
         result_str =\
                 f+' '+\
@@ -897,7 +890,9 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
             plt.setp(ax1.get_xticklabels(), visible=False)
 
             ax2 = plt.subplot(gs1[4:7,:2],sharex=ax1) # smoothened flux
-            ax2.scatter(t, flux,s=10,alpha=0.6,label='smoothened flux')
+            ax2.scatter(table[table.colnames[0]], normalise_flux(table[table.colnames[1]]),s=10,label='original flux',color='black',alpha=0.3)
+            ax2.scatter(t, flux,s=10,label='smoothened flux')
+            
             #ax2.title.set_text("Smoothened Lightcurve")
             ax2.set_ylabel("Normalised flux")
             ax2.legend(loc="lower left")  
@@ -977,7 +972,7 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
 
             if save:
                 try:
-                    fig.savefig(f'plots/{obj_id}_5_halfwidth.png',dpi=300) 
+                    fig.savefig(f'plots/{obj_id}.png',dpi=300) 
                 except:
                     fig.savefig(f'plots/test_lightcurve.png',dpi=300) 
 
