@@ -36,10 +36,10 @@ parser.add_argument(
     default=0.2,
 )
 parser.add_argument("-sector", help="lightcurve sector", dest="sector")
-parser.add_argument("-save_csv", dest="save_csv", action="store_true")
+parser.add_argument("-save_csv", dest="save_csv", action="store_false")
 parser.add_argument("-mag_lower", dest="mag_lower", help="lower magnitude", type=int)
 parser.add_argument("-mag_higher", dest="mag_higher", help="higher magnitude", type=int)
-
+parser.add_argument("-use_noiseless",dest = "use_noiseless",help="convert lightcurves to noiseless ones", action="store_true")
 
 args = parser.parse_args()
 
@@ -101,8 +101,11 @@ def inject_lightcurve(flux, time, depth, injected_time):
     )
 
 
-def run_injection(path, save_csv=args.save_csv):
-    """returns lightcurves as a dataframe"""
+def run_injection(path, save_csv=args.save_csv,use_noiseless_lightcurves=args.use_noiseless):
+    """returns lightcurves as a dataframe
+    
+    :use_noiseless_lightcurves: converts all injected lightcurves to "noiseless" ones by resetting them to 1. Only done for diagnostic purposes.
+    """
 
     ## grab the random lightcurves
     # lc_paths = select_lightcurves(path)
@@ -114,133 +117,139 @@ def run_injection(path, save_csv=args.save_csv):
     results_for_binning = []
     recovered_or_not = []
     filename = []
-    for i in lc_paths:
-        print(i)
-        filename.append(i)
-        data, lc_info = import_XRPlightcurve(
-            os.path.join(path, i), sector=args.sector, return_type="pandas"
-        )
-
-        depth = 10 ** np.random.uniform(-4, -2, 1)[0]
-        injected_depths.append(depth)
-        mags.append(lc_info[3])
-        time_range = data["time"][
-            data["time"].between(
-                data["time"].min() + 1, data["time"].max() - 1, inclusive=False
+    try:
+        for i in lc_paths:
+            print(i)
+            filename.append(i)
+            data, lc_info = import_XRPlightcurve(
+                os.path.join(path, i), sector=args.sector, return_type="pandas", drop_bad_points=False
             )
-        ].reset_index(
-            drop=True
-        )  # resets index so consistency is kept when working with indices
-        _ , injected_time = random.choice(list(enumerate(time_range)))
-        injected_times.append(injected_time)
 
-        ## comet model
-        data["injected_dip_flux"] = data["corrected flux"] * (
-            1
-            - comet_curve(
-                data["time"], depth, injected_time, 3.02715600e-01, 3.40346173e-01
-            )
-        )
+            depth = 10 ** np.random.uniform(-5, 0.5, 1)[0]
+            injected_depths.append(depth)
+            mags.append(lc_info[3])
+            time_range = data["time"][
+                data["time"].between(
+                    data["time"].min() + 1, data["time"].max() - 1, inclusive=False
+                )
+            ].reset_index(
+                drop=True
+            )  # resets index so consistency is kept when working with indices
+            _ , injected_time = random.choice(list(enumerate(time_range)))
+            injected_times.append(injected_time)
 
-        data = Table.from_pandas(data)
-        data = data[["time", "injected_dip_flux", "quality", "flux error"]]
-        results, data_arrays = processing(data, path, lc_info, method="median")
-        try:
-            os.makedirs("injection_recovery_data_arrays/")
-        except FileExistsError:
-            pass
-        try:
+            ## comet model
+            comet = 1 - comet_curve(data["time"], depth, injected_time, 3.02715600e-01, 3.40346173e-01)
+            data["injected_dip_flux"] = data["corrected flux"] * comet
+
+            if use_noiseless_lightcurves:
+                data['injected_dip_flux'] = np.ones(len(data['injected_dip_flux'])) * comet
+
+            data = Table.from_pandas(data)
+            data = data[["time", "injected_dip_flux", "quality", "flux error"]]
+            results, data_arrays = processing(data, i, lc_info, method=None)
+            try:
+                os.makedirs("injection_recovery_data_arrays/")
+            except FileExistsError:
+                pass
+
             np.savez(
-                f"injection_recovery_data_arrays/lc_info[0].npz",
+                f"injection_recovery_data_arrays/{lc_info[0]}.npz",
+                original_time = data['time'],
+                original_flux = data['injected_dip_flux'],
                 time=data_arrays[0],
                 flux=data_arrays[1],
-                trend_flux=data_arrays[2],
-                quality=data_arrays[3],
-            )
-        except:
-            np.savez(
-                f"injection_recovery_data_arrays/{i}.npz",
-                time=data_arrays[0],
-                flux=data_arrays[1],
+                #trend_flux=data_arrays[2],
                 quality=data_arrays[2],
             )
-        results = results.split()
-        recovered_time = float(results[2])
-        new_depth = float(results[7])
-        recovered_depth.append(float(results[7]))
-        results_for_binning.append(results)
 
-        data = data.to_pandas()
-        recovered_range = data.time[
-            data.time.loc[data.time == injected_time].index[0]
-            - 5 : data.time.loc[data.time == injected_time].index[0]
-            + 5
-        ].reset_index(drop=True)
+            results = results.split()
+            recovered_time = float(results[3])
 
-        try:
-            percentage_change = (
-                (abs(new_depth) - depth) / depth
-            ) * 100  # 0-depth to consider normalisation
-        except ZeroDivisionError:
-            percentage_change = 0
+            new_depth = float(results[8])
+            recovered_depth.append(new_depth)
+            results_for_binning.append(results)
 
-        if (
-            recovered_range.values[0] <= recovered_time <= recovered_range.values[-1]
-        ) & (abs(percentage_change) <= 25):
-            recovered = 1
-            recovered_or_not.append(recovered)
-        else:
-            recovered = 0
-            recovered_or_not.append(recovered)
+            data = data.to_pandas()
+            recovered_range = data.time[
+                data.time.loc[data.time == injected_time].index[0]
+                - 5 : data.time.loc[data.time == injected_time].index[0]
+                + 5
+            ].reset_index(drop=True)
 
-    df = pd.DataFrame(results_for_binning)
-    df.insert(0, "file", filename)
-    df["recovered"] = recovered_or_not
-    df["magnitude"] = mags
-    df["injected_depths"] = injected_depths
-    df["injected_time"] = injected_times
+            try:
+                percentage_change = (
+                    (abs(new_depth) - depth) / depth
+                ) * 100  # 0-depth to consider normalisation
+            except ZeroDivisionError:
+                percentage_change = 0
 
-    cols = [
-        "file",
-        "path"
-        "signal",
-        "snr",
-        "time",
-        "asym_score",
-        "width1",
-        "width2",
-        "duration",
-        "depth",
-        "peak_lspower",
-        "mstat",
-        "transit_prob",
-        "recovered",
-        "mag",
-        "injected_depth",
-        "injected_times",
-        "",
-    ]
+            if (
+                recovered_range.values[0] <= recovered_time <= recovered_range.values[-1]
+            ) & (abs(percentage_change) <= 100):
+                recovered = 1
+                recovered_or_not.append(recovered)
+            else:
+                recovered = 0
+                recovered_or_not.append(recovered)
+            
+            print("percentage change:", percentage_change)
+    except FileNotFoundError:
+        print(f"file {i} not found...")
+        pass
 
-    df.columns = cols
-    df.depth = [float(i) for i in df.depth]
+    try:
+        df = pd.DataFrame(results_for_binning)
+        df.insert(0, "file", filename)
+        df["recovered"] = recovered_or_not
+        df["magnitude"] = mags
+        df["injected_depths"] = injected_depths
+        df["injected_time"] = injected_times
+
+        cols = [
+            "file",
+            "path"
+            "signal",
+            "snr",
+            "time",
+            "asym_score",
+            "width1",
+            "width2",
+            "duration",
+            "depth",
+            "peak_lspower",
+            "mstat",
+            "transit_prob",
+            "recovered",
+            "mag",
+            "injected_depth",
+            "injected_times",
+            "",
+        ]
+
+        df.columns = cols
+        df.depth = [float(i) for i in df.depth]
+    except:
+        pass
 
     if args.save_csv:
         try:
-            os.makedirs("injection_recovery2")
-            print("created directory injection_recovery2")
+            os.makedirs("injection_recovery_noiseless")
+            print("created directory injection_recovery_noiseless")
         except FileExistsError:
             pass
 
         try:
-            os.makedirs(f"injection_recovery2/sector_{args.sector[0]}")
-            print(f"created directory injection_recovery2/sector_{args.sector[0]}")
+            os.makedirs(f"injection_recovery_noiseless/sector_{args.sector[0]}")
+            print(f"created directory injection_recovery_noiseless/sector_{args.sector[0]}")
         except FileExistsError:
             pass
 
         try:
             df.to_csv(
-                f"injection_recovery2/sector_{args.sector[0]}/tmag_{args.mag_lower}_tmag_{args.mag_higher}.csv"
+                f"injection_recovery_noiseless/sector_{args.sector[0]}/tmag_{args.mag_lower}_tmag_{args.mag_higher}.csv"
             )
+            print(f"file tmag_{args.mag_lower}_tmag_{args.mag_higher}.csv saved.")
         except FileExistsError:
             pass
 
@@ -256,7 +265,7 @@ def run_injection2(path, save_csv=args.save_csv,save_arrays=False):
 
     data, lc_info = import_XRPlightcurve(path, sector=args.sector, return_type="pandas")
 
-    depth = 10 ** np.random.uniform(-4, -2, 1)[0]
+    depth = 10 ** np.random.uniform(-5, 0.5, 1)[0]
     time_range = data["time"][
         data["time"].between(
             data["time"].min() + 1, data["time"].max() - 1, inclusive=False
@@ -264,7 +273,7 @@ def run_injection2(path, save_csv=args.save_csv,save_arrays=False):
     ].reset_index(
         drop=True
     )  # resets index so consistency is kept when working with indices
-    injected_time_index, injected_time = random.choice(list(enumerate(time_range)))
+    _ , injected_time = random.choice(list(enumerate(time_range)))
 
     ## comet model
     data["injected_dip_flux"] = data["corrected flux"] * (
@@ -324,8 +333,8 @@ def run_injection2(path, save_csv=args.save_csv,save_arrays=False):
         recovered = 0
 
     try:
-        os.makedirs("injection_recovery_reformatted")
-        print("created directory injection_recovery_reformatted/")
+        os.makedirs("injection_recovery")
+        print("created directory injection_recovery/")
     except FileExistsError:
         pass
 
@@ -368,8 +377,14 @@ if __name__ == "__main__":
 
             results = run_injection(path)
 
+
         else:
             print("path is ", path)
+            try:
+                run_injection(path)
+            except:
+                ### this is only because of some files that got deleted (so the lookup file has lightcurves that don't "exist" in our folders)
+                lookup = pd.read_csv(f"/storage/astro2/phrdhx/tesslcs/sector{args.sector}lookupv2.csv")
+                run_injection(path)
 
-            run_injection(path)
             

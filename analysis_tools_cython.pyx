@@ -569,7 +569,7 @@ def classify(m,n,real,asym):
         return "maybeTransit"
 
 
-def calc_shape(m,n,time,quality,flux,cutout_half_width=3):
+def calc_shape(m,n,time,quality,flux,flux_error,cutout_half_width=3):
     """Fit both symmetric and comet-like transit profiles and compare fit.
     Returns:
     (1) Asymmetry: ratio of (errors squared)
@@ -591,14 +591,15 @@ def calc_shape(m,n,time,quality,flux,cutout_half_width=3):
     if n-w*m >= 0 and n+w*m < len(time):
         t = time[n-w*m:n+w*m] # time
         if (t[-1]-t[0]) / np.median(np.diff(t)) / len(t) > 1.5:
-            return -4,-4,-4
+            return -4,-4,-4, 0, 0
         t0 = time[n]
         diffs = np.diff(t)
         for i,diff in enumerate(diffs):
             if diff > 0.5 and (t0-t[i])>0 and (t0-t[i])<2:
-                return -5,-5,-5
+                return -5,-5,-5, 0, 0
         x = flux[n-w*m:n+w*m] # flux
         q = quality[n-w*m:n+w*m]
+        fe = flux_error[n-w*m:n+w*m]
         # background_level = (sum(x[:m]) + sum(x[(2*w-1)*m:]))/(2*m)
         bg_l1 = np.mean(x[:int(n_m_bg_start*m)])
         bg_t1 = np.mean(t[:int(n_m_bg_start*m)])
@@ -606,13 +607,13 @@ def calc_shape(m,n,time,quality,flux,cutout_half_width=3):
         bg_t2 = np.mean(t[(2*w-int(n_m_bg_end*m)):])
         grad = (bg_l2-bg_l1)/(bg_t2-bg_t1)
         background_level = bg_l1 + grad * (t - bg_t1)
-        x -= background_level
+        #x -= background_level
 
         try:
             params1, pcov1 = single_gaussian_curve_fit(t,-x)
             params2, pcov2 = comet_curve_fit(t,-x)
         except:
-            return -3,-3,-3
+            return -3,-3,-3, 0, 0
 
         fit1 = -gauss(t,*params1)
         fit2 = -comet_curve(t,*params2)
@@ -620,13 +621,14 @@ def calc_shape(m,n,time,quality,flux,cutout_half_width=3):
 
         scores = [score_fit(x,fit) for fit in [fit1,fit2]]
         if scores[1] > 0:
-            return scores[0]/scores[1], params2[2], params2[3], [t,x,q,fit1,fit2,background_level,depth]
+            return scores[0]/scores[1], params2[2], params2[3], depth, [t,x,q,fe,fit1,fit2,background_level]
         else:
 
-            return -1,-1,-1
+            return -1,-1,-1, 0, 0 
     else:     
 
-        return -2,-2,-2
+        return -2,-2,-2, 0, 0
+
 
 def d2q(d):
     '''Convert Kepler day to quarter'''
@@ -687,6 +689,8 @@ def smoothing(table,method,window_length=2.5,power=0.08):
         periodicnoise_ls = flux - flux_ls 
         flux_ls *= real
         return flux_ls, periodicnoise_ls # returns one-step Lomb Scargle
+    elif method==None:
+        return table[table.colnames[1]], np.zeros(len(table[table.colnames[1]])) # the "trend flux" is just an array of zeros
     else:
         print("method type not specified. Try again")
         return
@@ -736,7 +740,7 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
                 a['quality'] = table[table.colnames[2]]
                 a['flux_error'] = table[table.colnames[3]]
                 #table[table.colnames[1]] = flat_flux - np.ones(len(flat_flux)) # resets normalisation to zero instead of one.
-                t, flux, quality, real, error = clean_data(a)
+                t, flux, quality, real, flux_error = clean_data(a)
                 flux *= real
 
             elif (method == 'lomb-scargle') or (method == 'fourier'): # this block of code is the same for methods 1 and 2
@@ -749,8 +753,9 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
                 #return flux_ls, periodicnoise_ls # returns one-step Lomb Scargle
 
         else:
-            t, flux, quality, real, error = clean_data(table)
-            flux = normalise_flux(flux)
+            t, flux, quality, real, flux_error = clean_data(table)
+            print(t)
+            #flux = normalise_flux(flux)
             flux*=real
 
 
@@ -823,18 +828,9 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
 
         ### this try except is done for the cases where calc_shape returns -3, -4 or -5.
 
-        try:
- 
-            asym, width1, width2, info = calc_shape(m,n,t,quality,flux)
-            depth = info[-1]
-            s = classify(m,n,real,asym)
+        asym, width1, width2, depth, info = calc_shape(m,n,t,quality,flux,flux_error)
+        s = classify(m,n,real,asym)
 
-        except ValueError:
-            print(calc_shape(m,n,t,quality,flux))
-            asym, width1, width2 = calc_shape(m,n,t,quality,flux)
-            depth = 0.00000000
-            s = classify(m,n,real,asym)
-            
         
         result_str =\
                 f+' '+\
@@ -901,12 +897,12 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
 
             ax3 = plt.subplot(gs1[1:6,2:]) # transit shape
             try:
-                t2, x2, q2, y2, w2 = info[0],info[1],info[2],info[3],info[4]
+                t2, x2, q2, y2, w2 = info[0],info[1],info[2],info[-3],info[-2]
                 
                 ax3.plot(t2, x2,label='data') # flux
                 ax3.plot(t2,y2,label='gaussian model') # gauss fit
                 ax3.plot(t2,w2,label='comet model') # comet fit
-                ax3.plot(t2, info[5],label='background trend',color='black')
+                ax3.plot(t2, info[-1],label='background trend',color='black')
                 ax3.set_xlabel("Time - 2457000 (BTJD Days)")
                 #ax3.set_ylabel("Normalised flux")
                 ax3.legend(loc="lower left")
@@ -982,7 +978,10 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
             #    fig.savefig(f'plots/{obj_id}_twostep_{method}.png',dpi=300)  
 
             plt.show()
-        
+
+            #if save_cutouts:
+            #    np.savez(f'{obj_id}.npz',time=t2, flux=x2, quality=q2,flux_error=info[4])
+
 
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
