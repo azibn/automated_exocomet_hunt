@@ -18,6 +18,7 @@ mpl.rcParams['agg.path.chunksize'] = 10000
 from post_processing_tools import *
 from wotan import flatten
 from statistics import median,mean
+from scipy.stats import skew
 import numpy as np
 cimport numpy as np
 import math
@@ -274,12 +275,12 @@ def import_tasoclightcurve(file_path, drop_bad_points=False, flux='FLUX_CORR',
 def calculate_timestep(table):
     """Returns median value of time differences between data points,
     estimate of time delta data points."""
-
-    dt = [ table[i+1][0] - table[i][0] for i in range(len(table)-1) ] # calculates difference between (ith+1) - (ith) point 
-    dt.sort()
-    return dt[int(len(dt)/2)] # median of them.
-
-    #np.median(np.diff(table['time']))
+    try:
+        dt = [ table[i+1][0] - table[i][0] for i in range(len(table)-1) ] # calculates difference between (ith+1) - (ith) point 
+        dt.sort()
+        return dt[int(len(dt)/2)] # median of them.
+    except:
+        return np.median(np.diff(table['time'])) ## change this to account for any time column names
 
     
 
@@ -569,7 +570,7 @@ def classify(m,n,real,asym):
         return "maybeTransit"
 
 
-def calc_shape(m,n,time,quality,flux,flux_error,cutout_half_width=3):
+def calc_shape(m,n,time,flux,quality,flux_error,n_m_bg_start=1,n_m_bg_scale_factor=2):
     """Fit both symmetric and comet-like transit profiles and compare fit.
     Returns:
     (1) Asymmetry: ratio of (errors squared)
@@ -578,56 +579,63 @@ def calc_shape(m,n,time,quality,flux,flux_error,cutout_half_width=3):
     -2 : Too close to end of light curve to fit profile
     -3 : Unable to fit model (e.g. timeout)
     -4 : Too much empty space in overall light curve or near dip
-    -5 : Gap within 2 days before dip
-
     (2,3) Widths of comet curve fit segments.
     info: t, x, q, fit1 and fit2 are the transit shape elements 
 
     """
-    w = cutout_half_width
     ## how many transit widths to take the general linear trend from. start is 1/4 length of cutout from beginning, end is 1 from end.
-    n_m_bg_start = w/4
-    n_m_bg_end = w/8
-    if n-w*m >= 0 and n+w*m < len(time):
-        t = time[n-w*m:n+w*m] # time
+    #first_index = n - (n_m_bg_start*n)
+    #last_index = n - (n_m_bg_end*m)
+    
+    
+    ## the transit widths of the cutout from the T-statistic minimum value. 
+    ## this project requires the cutout to have more transit widths after the midtransit, to cover more of the tail.
+    ## default is set to 1 transit width before and 2 transit widths after 
+
+    n_m_bg_end = n_m_bg_scale_factor*n_m_bg_start
+
+    cutout_before = n-(m*n_m_bg_start)
+    cutout_after = n+(m*n_m_bg_end)
+    
+    if cutout_before>= 0 and cutout_after < len(time):
+        t = time[cutout_before:cutout_after]
         if (t[-1]-t[0]) / np.median(np.diff(t)) / len(t) > 1.5:
-            return -4,-4,-4, 0, 0
+            return -4,-4,-4,0,-4
         t0 = time[n]
         diffs = np.diff(t)
-        for i,diff in enumerate(diffs):
-            if diff > 0.5 and (t0-t[i])>0 and (t0-t[i])<2:
-                return -5,-5,-5, 0, 0
-        x = flux[n-w*m:n+w*m] # flux
-        q = quality[n-w*m:n+w*m]
-        fe = flux_error[n-w*m:n+w*m]
-        # background_level = (sum(x[:m]) + sum(x[(2*w-1)*m:]))/(2*m)
-        bg_l1 = np.mean(x[:int(n_m_bg_start*m)])
-        bg_t1 = np.mean(t[:int(n_m_bg_start*m)])
-        bg_l2 = np.mean(x[(2*w-int(n_m_bg_end*m)):])
-        bg_t2 = np.mean(t[(2*w-int(n_m_bg_end*m)):])
-        grad = (bg_l2-bg_l1)/(bg_t2-bg_t1)
-        background_level = bg_l1 + grad * (t - bg_t1)
-        #x -= background_level
 
+        x = flux[cutout_before:cutout_after]
+        q = quality[cutout_before:cutout_after]
+        fe = flux_error[cutout_before:cutout_after]
+        
+        bg_before = np.mean(x[:int(m/4)])
+        bg_time_before = np.mean(t[:int(m/4)])
+        bg_after = np.mean(x[-int(round(m/4)):])
+        bg_time_after = np.mean(t[-int(round(m/4)):])
+        
+        
+        grad = (bg_after-bg_before)/(bg_time_after-bg_time_before)
+        background_level = bg_before + grad * (t - bg_time_before)
+        x = x - background_level
         try:
             params1, pcov1 = single_gaussian_curve_fit(t,-x)
             params2, pcov2 = comet_curve_fit(t,-x)
         except:
-            return -3,-3,-3, 0, 0
+            return -3,-3,-3,0,-3
 
         fit1 = -gauss(t,*params1)
         fit2 = -comet_curve(t,*params2)
         depth = fit2.min()
-
         scores = [score_fit(x,fit) for fit in [fit1,fit2]]
+        skewness = skew(-x)
         if scores[1] > 0:
-            return scores[0]/scores[1], params2[2], params2[3], depth, [t,x,q,fe,fit1,fit2,background_level]
+            return scores[0]/scores[1], params2[2], params2[3], depth, [t,x,q,fe,fit1,fit2,background_level, skewness]
         else:
 
-            return -1,-1,-1, 0, 0 
+            return -1,-1,-1,0,-1
     else:     
 
-        return -2,-2,-2, 0, 0
+        return -2,-2,-2,0,-2
 
 
 def d2q(d):
@@ -706,7 +714,7 @@ def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     final_flux *= real
     return final_flux, periodicnoise_ls2, original_masked_flux
 
-def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False,twostep=False,return_arraydata=False): 
+def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False,twostep=False,return_arraydata=False,noiseless=False,return_cutouts=False): 
     """the main bulk of the search algorithm.
     inputs:
     - :table: lightcurve table containing time, flux and quality (needs to only be these three columns)
@@ -753,10 +761,12 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
                 #return flux_ls, periodicnoise_ls # returns one-step Lomb Scargle
 
         else:
-            t, flux, quality, real, flux_error = clean_data(table)
-            print(t)
-            #flux = normalise_flux(flux)
-            flux*=real
+            if noiseless:
+                t, flux, quality, real, flux_error = clean_data(table)
+            else:
+                t, flux, quality, real, flux_error = clean_data(table)
+                flux = normalise_flux(flux)
+                flux*=real
 
 
         timestep = calculate_timestep(table)
@@ -779,20 +789,6 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
 
         ## M-statistic
         M_stat = calc_mstatistic(flux)
-
-        ## smoothing operation
-       
-
-        #if method is None:
-        #    final_flux = normalise_flux(flux)
-        #elif method in wotan_methods:
-        #    
-
-        #    final_flux, trend_flux = smoothing(table,method=method)
-        #    flux_aggressive_filter, trend_flux_aggressive_filter = smoothing(table,method=method,window_length=1)
-        #else: 
-        #    final_flux, trend_flux = smoothing(table,method=method)
-        #    flux_aggressive_filter, trend_flux_aggressive_filter = smoothing(table,method=method,window_length=1)
 
         T1 = test_statistic_array(flux,60 * factor)
         
@@ -826,9 +822,7 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
             Tm_depth = flux[Tm_start:Tm_end].mean() 
             Ts = nonzero(T2[m]).std()
 
-        ### this try except is done for the cases where calc_shape returns -3, -4 or -5.
-
-        asym, width1, width2, depth, info = calc_shape(m,n,t,quality,flux,flux_error)
+        asym, width1, width2, depth, info = calc_shape(m,n,t,flux,quality,flux_error)
         s = classify(m,n,real,asym)
 
         
@@ -861,6 +855,7 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
                 "peak_lspower",
                 "mstat",
                 "transit_prob",
+
 
             ]
 
@@ -979,14 +974,15 @@ def processing(table,f_path,lc_info=None,method=None,make_plots=False,save=False
 
             plt.show()
 
-            #if save_cutouts:
-            #    np.savez(f'{obj_id}.npz',time=t2, flux=x2, quality=q2,flux_error=info[4])
-
-
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
 
     
+    ##try:
+    ##    if return_cutouts:
+            
+
+
     if method == None:
         return result_str, [t, flux, quality]
     else:

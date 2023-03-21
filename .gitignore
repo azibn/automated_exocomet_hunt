@@ -24,6 +24,8 @@ catalogs/
 candidates/
 umap_projections/
 mastDownload/
+injection_recovery_*
+
 
 # plots
 plot*
