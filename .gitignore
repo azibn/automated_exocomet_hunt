@@ -45,10 +45,6 @@ batch_reanalyse_asym.py
 # tests
 test*
 
-# injection recovery stuff
-injection*
-
-
 # Temp vim files
 *.swp
 
