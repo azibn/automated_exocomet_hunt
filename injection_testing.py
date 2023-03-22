@@ -148,14 +148,14 @@ def run_injection(path, save_csv=args.save_csv,use_noiseless_lightcurves=args.us
 
         if use_noiseless_lightcurves:
             if not drop_bad_points:
-                ### pure noiseless lightcurves (not taking into account data gaps and ramps)
+                ### pure noiseless lightcurves (no data gaps and ramps considered)
                 time = np.linspace(1469,1490,1000)
                 flux = (np.ones(1000))
                 quality = np.zeros(len(flux))
                 flux_error = np.zeros(len(flux))
                 data = pd.DataFrame([time,flux,quality,flux_error]).T
                 
-                columns = ['time','injected_dip_flux','quality','flux error']
+                columns = ['time','flux','quality','flux error']
                 data.columns = columns
                 time_range = data["time"][
                 data["time"].between(
@@ -166,27 +166,35 @@ def run_injection(path, save_csv=args.save_csv,use_noiseless_lightcurves=args.us
                 )  # resets index so consistency is kept when working with indices
                 _ , injected_time = random.choice(list(enumerate(time_range)))
                 comet = 1 - comet_curve(time, depth, injected_time, 3.02715600e-01, 3.40346173e-01)
-                data["injected_dip_flux"] = (data["injected_dip_flux"] * comet) - 1
+                data["injected_dip_flux"] = (data["flux"] * comet) - 1
                 #data['injected_dip_flux'] = (np.ones(len(data['corrected flux'])) * comet) - 1 ## needs to be normalised to zero for T-statistic
 
             else:
                 ### noiseless lightcurves with realistic time coverage (MAD cuts and non-zero quality flags)
                 time = data['time']
                 comet = 1 - comet_curve(time, depth, injected_time, 3.02715600e-01, 3.40346173e-01)
-                data["injected_dip_flux"] = (np.ones(len(data['corrected flux'])) * comet) - 1
 
-        
+                ## this is done because Wotan normalises flux if a smoothing filter is specified, so for ease, scaled up flat (noiseless) flux array to median flux of the lightcurve.
+                if args.method == None:  
+                    data["injected_dip_flux"] = (np.ones(len(data['corrected flux'])) * comet) - 1
+                else:
+                    data["injected_dip_flux"] = ((np.ones(len(data['corrected flux'])) * comet) * np.median(data['corrected flux'])) 
+
+        ## converted to astropy table 
         data_to_process = Table.from_pandas(data)
         data_to_process = data_to_process[["time", "injected_dip_flux", "quality", "flux error"]]
 
+        ## the meat of the search is done by this function
         results, data_arrays = processing(data_to_process, i, lc_info, method=args.method,noiseless=use_noiseless_lightcurves)
+
+        ## save the lightcurve data of the search to this directory
         try:
-            os.makedirs(f"injection_recovery_data_arrays_{args.percentage_threshold}percent_halfdaysmoothing/")
+            os.makedirs(f"injection_recovery_data_arrays_{args.percentage_threshold}percent_noiselessv2/")
         except FileExistsError:
             pass
 
         np.savez(
-            f"injection_recovery_data_arrays_{args.percentage_threshold}percent_halfdaysmoothing/{lc_info[0]}.npz",
+            f"injection_recovery_data_arrays_{args.percentage_threshold}percent_noiselessv2/{lc_info[0]}.npz",
             original_time = data_to_process[data_to_process.colnames[0]],
             original_flux = data_to_process[data_to_process.colnames[1]],
             time=data_arrays[0],
@@ -195,13 +203,15 @@ def run_injection(path, save_csv=args.save_csv,use_noiseless_lightcurves=args.us
             quality=data_arrays[2],
         )
 
+        ## making sense of the output from `processing`
         results = results.split()
         recovered_time = float(results[3])
-
         new_depth = float(results[8])
         recovered_depth.append(new_depth)
         results_for_binning.append(results)
 
+        ## convert back to pandas to make advantage of pandas functions
+        ### create a time range that is +- 2.5 hours from the injected time (total 5 hour window)
         data = data_to_process.to_pandas()
         recovered_range = data.time[
             data.time.loc[data.time == injected_time].index[0]
@@ -209,6 +219,7 @@ def run_injection(path, save_csv=args.save_csv,use_noiseless_lightcurves=args.us
             + 5
         ].reset_index(drop=True)
 
+        ## defining criteria for successful recovery: within 100% change in depth, and within the timeframe
         try:
             percentage_change = (
                 (abs(new_depth) - depth) / depth
@@ -242,21 +253,21 @@ def run_injection(path, save_csv=args.save_csv,use_noiseless_lightcurves=args.us
     if args.save_csv:
        
         try:
-            os.makedirs(f"injection_recovery_{args.percentage_threshold}percent_halfdaysmoothing")
-            print(f"created directory injection_{args.percentage_threshold}percent_halfdaysmoothing")
+            os.makedirs(f"injection_recovery_{args.percentage_threshold}percent_noiselessv2")
+            print(f"created directory injection_{args.percentage_threshold}percent_noiselessv2")
         except FileExistsError:
             pass
 
         try:
-            os.makedirs(f"injection_recovery_{args.percentage_threshold}percent_halfdaysmoothing/sector_{args.sector[0]}")
-            print(f"created directory injection_{args.percentage_threshold}percent_halfdaysmoothing/sector_{args.sector[0]}")
+            os.makedirs(f"injection_recovery_{args.percentage_threshold}percent_noiselessv2/sector_{args.sector[0]}")
+            print(f"created directory injection_{args.percentage_threshold}percent_noiselessv2/sector_{args.sector[0]}")
         except FileExistsError:
             
             pass
 
         try:
             df.to_csv(
-                f"injection_recovery_{args.percentage_threshold}percent_halfdaysmoothing/sector_{args.sector[0]}/tmag_{args.mag_lower}_tmag_{args.mag_higher}.csv"
+                f"injection_recovery_{args.percentage_threshold}percent_noiselessv2/sector_{args.sector[0]}/tmag_{args.mag_lower}_tmag_{args.mag_higher}.csv"
             )
             print(f"file tmag_{args.mag_lower}_tmag_{args.mag_higher}.csv saved.")
         except FileExistsError:
