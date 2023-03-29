@@ -28,9 +28,18 @@ injection_recovery_*
 
 
 # plots
-plot*
 *.png
+plot*
+
 # poster
+
+
+# extra
+injection_tools.py
+lookup_checker.py
+lost_ids.txt
+notebooks/process.ipynb
+
 
 # xrp files
 qstat.py

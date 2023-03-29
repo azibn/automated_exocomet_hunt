@@ -72,12 +72,13 @@ def select_lightcurves(path):
 
 
 def new_select_lightcurves(mag_lower, mag_higher):
-    """uses lookup data provided by the XRP to select lightcurves within a certain magnitude range."""
+    """uses lookup data provided by the XRP to select lightcurves within a certain magnitude range.""" 
+
     return (
         lookup.Filename[
             (lookup.Magnitude >= mag_lower) & (lookup.Magnitude <= mag_higher)
         ]
-        .sample(args.number)
+        .sample(args.number,replace=True)
         .values
     )
 
@@ -130,6 +131,7 @@ def run_injection(path, save_csv=args.save_csv,use_noiseless_lightcurves=args.us
         )
 
         depth = 10 ** np.random.uniform(-4, -2, 1)[0]
+        #tail = np.random.uniform(0.2,1,1)[0] ## if tail lengths want to be tested
         injected_depths.append(depth)
         mags.append(lc_info[3])
         time_range = data["time"][
@@ -188,20 +190,20 @@ def run_injection(path, save_csv=args.save_csv,use_noiseless_lightcurves=args.us
         results, data_arrays = processing(data_to_process, i, lc_info, method=args.method,noiseless=use_noiseless_lightcurves)
 
         ## save the lightcurve data of the search to this directory
-        try:
-            os.makedirs(f"injection_recovery_data_arrays_{args.percentage_threshold}percent_noiselessv2/")
-        except FileExistsError:
-            pass
+        #try:
+        #    os.makedirs(f"/storage/astro2/phrdhx/tesslcs/injection_recovery_data_arrays_10000perbin_noiseless/")
+        #except FileExistsError:
+        #    pass
 
-        np.savez(
-            f"injection_recovery_data_arrays_{args.percentage_threshold}percent_noiselessv2/{lc_info[0]}.npz",
-            original_time = data_to_process[data_to_process.colnames[0]],
-            original_flux = data_to_process[data_to_process.colnames[1]],
-            time=data_arrays[0],
-            flux=data_arrays[1],
-            #trend_flux=data_arrays[2],
-            quality=data_arrays[2],
-        )
+        #np.savez(
+        #    f"/storage/astro2/phrdhx/tesslcs/injection_recovery_data_arrays_10000perbin_noiseless/{lc_info[0]}.npz",
+        #    original_time = data_to_process[data_to_process.colnames[0]],
+        #    original_flux = data_to_process[data_to_process.colnames[1]],
+        #    time=data_arrays[0],
+        #    flux=data_arrays[1],
+        #    #trend_flux=data_arrays[2],
+        #    quality=data_arrays[2],
+        #)
 
         ## making sense of the output from `processing`
         results = results.split()
@@ -253,21 +255,21 @@ def run_injection(path, save_csv=args.save_csv,use_noiseless_lightcurves=args.us
     if args.save_csv:
        
         try:
-            os.makedirs(f"injection_recovery_{args.percentage_threshold}percent_noiselessv2")
-            print(f"created directory injection_{args.percentage_threshold}percent_noiselessv2")
+            os.makedirs(f"injection_recovery_{args.percentage_threshold}percent_1halfday")
+            print(f"created directory injection_{args.percentage_threshold}percent_1halfday")
         except FileExistsError:
             pass
 
         try:
-            os.makedirs(f"injection_recovery_{args.percentage_threshold}percent_noiselessv2/sector_{args.sector[0]}")
-            print(f"created directory injection_{args.percentage_threshold}percent_noiselessv2/sector_{args.sector[0]}")
+            os.makedirs(f"injection_recovery_{args.percentage_threshold}percent_1halfday/sector_{args.sector[0]}")
+            print(f"created directory injection_{args.percentage_threshold}percent_1halfday/sector_{args.sector[0]}")
         except FileExistsError:
             
             pass
 
         try:
             df.to_csv(
-                f"injection_recovery_{args.percentage_threshold}percent_noiselessv2/sector_{args.sector[0]}/tmag_{args.mag_lower}_tmag_{args.mag_higher}.csv"
+                f"injection_recovery_{args.percentage_threshold}percent_1halfday/sector_{args.sector[0]}/tmag_{args.mag_lower}_tmag_{args.mag_higher}.csv"
             )
             print(f"file tmag_{args.mag_lower}_tmag_{args.mag_higher}.csv saved.")
         except FileExistsError:
