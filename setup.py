@@ -5,7 +5,7 @@ import numpy
 
 
 setup(
-    name="light_curve_analysis",
+    name="exocomet_search",
     ext_modules=cythonize(
         "scripts/analysis_tools_cython.pyx", compiler_directives={"language_level": 3}
     ),
