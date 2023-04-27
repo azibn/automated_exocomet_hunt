@@ -2,7 +2,7 @@
 
 Code for automated detection of exocomets in light curves.
 
-## Installation
+# Installation
 
 Latest tested in Python 3.7
 	
@@ -32,7 +32,7 @@ to the base environment and then
 
 `conda` commands will also work with mamba, eg: `conda activate <env>`.
 
-## Usage
+# Usage
 
 These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves.
 
@@ -58,7 +58,7 @@ TESS SPOC lightcurves can also be obtained from [MAST](https://archive.stsci.edu
 
 The functions should work with lightcurves obtained from the `lightkurve` package. However, the main function of the search, `processing`, requires the data to be in the format of `time`, `flux`, `quality`, `flux error` in either a `astropy.Table` or `pandas.DataFrame` format right now, so make sure to have this format if you are looking to process the lightcurve.
 
-## Code Style
+# Code Style
 Code style in `.py` scripts is formatted with [Black Python Formatter](https://black.readthedocs.io/en/stable/index.html) and must be standardised with Black before pushing to the repository. Black formatting checks run as part of the Git workflow. It is responsibility of the user to format their code before pushing to repo.
 
 To format your files, enter shell and run:
@@ -71,7 +71,7 @@ or
 
 to format contents of the entire directory.
 
-## Docker
+# Docker
 
 Progress on this pipeline has been made to integrate it with Docker if the setup fails for whatever reason, or if you are just a Docker enthusiast. If you are not familiar with Docker, [this page](https://www.docker.com/resources/what-container) is a good starting point. But you don't really need to know how it works to use it! This is still in development, as we're still working out the system requirements etc, so if there are any issues do get in touch. 
 
