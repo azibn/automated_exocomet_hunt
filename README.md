@@ -32,7 +32,7 @@ to the base environment and then
 
 ## Usage
 
-These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves
+These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves.
 
 Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/). 
 
@@ -51,6 +51,10 @@ TESS SPOC lightcurves can also be obtained from [MAST](https://archive.stsci.edu
 
 
 `batch_analyse.py` runs on directories of files, outputting results to a text file with one row per file. `archive_analyse.sh` is a bash script for processing compressed archives of light curve files, extracting them temporarily to a directory.  Both these scripts have multiple options (number of threads, output file location ...), run with help flag (`-h`) for more details.
+
+### Integration with `lightkurve`
+
+The functions should work with lightcurves obtained from the `lightkurve` package. However, the main function of the search, `processing`, requires the data to be in the format of `time`, `flux`, `quality`, `flux error` in either a `astropy.Table` or `pandas.DataFrame` format right now, so make sure to have this format if you are looking to process the lightcurve.
 
 ## Code Style
 Code style in `.py` scripts is formatted with [Black Python Formatter](https://black.readthedocs.io/en/stable/index.html) and must be standardised with Black before pushing to the repository. Black formatting checks run as part of the Git workflow. It is responsibility of the user to format their code before pushing to repo.
