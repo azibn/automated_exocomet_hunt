@@ -1,3 +1,5 @@
+**Note: This work has been mainly developed with focus on the internal lightcurves in the collaboration. However, they should still be compatible with lightcurves obtained via MAST or `lightcurve`.**
+
 Code for automated detection of exocomets in light curves.
 
 ## Installation
