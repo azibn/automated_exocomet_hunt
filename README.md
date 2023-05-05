@@ -34,11 +34,13 @@ to the base environment and then
 
 # Usage
 
-These scripts can run on TESS and Kepler lightcurves. Our analysis uses an ealier iteration of the `GSFC-ELEANOR-LITE` lightcurves, a lightweight version of the [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves. More information on these lightcurves can be found [here](https://archive.stsci.edu/hlsp/gsfc-eleanor-lite). The pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) lightcurves downloaded from MAST. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves.
+## `batch_analyse.py`
+
+These scripts can run on TESS and Kepler lightcurves. Our analysis uses an ealier iteration of the `GSFC-ELEANOR-LITE` lightcurves, a lightweight version of the [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves. More information on the `GSFC-ELEANOR-LITE` lightcurves can be found [here](https://archive.stsci.edu/hlsp/gsfc-eleanor-lite). The pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) lightcurves downloaded from MAST. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves.
 
 Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/). 
 
-`batch_analyse` can run on a single file, a directory of files, or the entire sector. Results will be output to a text file with one row per file. For example, with a `.pkl` lightcurve you can run:
+`batch_analyse` is the main file for this project, and can run on a single file, a directory of files, or the entire sector. Results will be output to a text file with one row per file. For example, with a `.pkl` lightcurve you can run:
 
     python batch_analyse.py /storage/.../tesslcs_sector_6_104/2_min_cadence_targets/tesslc_270577175.pkl
 
@@ -47,6 +49,12 @@ For `.fits` format lightcurves for example, one can run:
     python batch_analyse.py hlsp_tess-spoc_tess_phot_0000000270577175-s0006_tess_v1_lc.fits
     
 The script has multiple arguments that you can call (number of threads, output file location, smoothing method from `wotan` etc), where some are mandatory. For more information on these flags, run the script with `-h`.
+
+## `injection_testing`
+
+This script runs an injection test on a user-specified (default 100000) number of lightcurves between a magnitude range. The depths of the injected comets are random. 
+
+**Note: This is currently only for the `.pkl` files. I have not yet made it compatible with other file types.**
 
 ## Integration with `lightkurve`
 
