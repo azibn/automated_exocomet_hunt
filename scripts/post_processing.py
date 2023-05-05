@@ -34,7 +34,7 @@ def get_output(file_path):
         "skewness",
         "skewness_error",
         "noise_estimate",
-        "transit_prob"
+        "transit_prob",
     ]
     df.columns = cols
     return df
@@ -144,7 +144,7 @@ def distribution(x, y, savefig=False, savefig_path="distribution.png"):
     """plots asymmetry score vs signal/noise over a signal of 5"""
     fig, ax = plt.subplots(figsize=(10, 7))
     ax.scatter(x, y, s=2)
-    #ax.set_xlim(-0, 1.9)
+    # ax.set_xlim(-0, 1.9)
     ax.set_ylim(-1, 30)
     ax.set_title("SNR vs asymmetry plot", fontsize=14)
     ax.set_xlabel("$\\alpha$", fontsize=12)

@@ -3,15 +3,12 @@
 import os
 import multiprocessing
 import sys
-import time
 import traceback
 import argparse
 import glob
 import warnings
 import numpy as np
-import pandas as pd
-from astropy.table import Table
-from analysis_tools_cython import (
+from scripts.analysis_tools_cython import (
     import_XRPlightcurve,
     import_lightcurve,
     processing,
@@ -46,14 +43,6 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "-inj",
-    help="an injection-recovery test",
-    dest="inj",
-    action="store_true",
-)
-
-
-parser.add_argument(
     "-step",
     help="enable twostep. used in conjuction with -m fourier",
     dest="step",
@@ -86,6 +75,11 @@ parser.add_argument(
 )
 
 parser.add_argument("-n", help="does not save output file", action="store_true")
+parser.add_argument(
+    "-q",
+    help="drop bad quality data. To keep bad quality data, call this argument. Default is True",
+    action="store_false",
+)
 
 # Get directories from command line arguments.
 args = parser.parse_args()
@@ -116,16 +110,13 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
         print(f_path)
         if f_path.endswith(".pkl"):
             table, lc_info = import_XRPlightcurve(
-                f_path, sector=sector, clip=args.c, inj=args.inj
+                f_path, sector=sector, clip=args.c, drop_bad_points=args.q
             )
-
-            if args.inj:
-                table = table["time", "injected_flux", "quality", "flux error"]
-
             table = table["time", args.f, "quality", "flux error"]
 
         else:
             table, lc_info = import_lightcurve(f_path, flux=args.f)
+            print(table)
             # table = table["TIME", args.f, "QUALITY","PDSCAP_FLUX_ERR"]
         result_str, save_data = processing(
             table, f_path, lc_info, method=args.m, make_plots=args.p, twostep=args.step
@@ -156,11 +147,11 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
                 )
             except FileExistsError:
                 pass
-            except NameError:
-                sector = input("sector:")
-                os.makedirs(
-                    f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}"
-                )
+            # except NameError:
+            #     sector = input("sector:")
+            #     os.makedirs(
+            #         f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}"
+            #     )
             np.savez(
                 f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}/tesslc_{obj_id}.npz",
                 obj_id=obj_id,
@@ -193,19 +184,10 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
         traceback.print_exc()
 
 
-def injected_transit_processing(path):
-    print(os.path.join(args.path, path))
-    data = pd.read_csv(os.path.join(args.path, path))
-    data = Table.from_pandas(data)
-    data = data[["time", "injected_dip_flux", "quality", "flux error"]]
-    results, data_arrays = processing(data, path, method=args.m, save=True)
-
-
 if __name__ == "__main__":
-    start_time = time.time()
     if "sector" in args.path[0]:
         sector = int(os.path.split(args.path[0])[0].split("sector")[1].split("_")[1])
-        print(sector)
+        print(f"sector {sector}")
     else:
         sector = int(input("sector: "))
 
@@ -221,21 +203,14 @@ if __name__ == "__main__":
         # if we are in the lowest subdirectory, perform glob this way.
 
         if not list(folders_in(path)):
-
-            if args.inj:
-                files = glob.glob(os.path.join(path, "*.csv"))
-                pool.map(injected_transit_processing, files)
-
             print("this is the lowest subdirectory. running the search...")
 
             # works for both Kepler and TESS fits files.
             fits = glob.glob(os.path.join(path, "*lc.fits"))
             pkl = glob.glob(os.path.join(path, "*.pkl"))
-            npz = glob.glob(os.path.join(path, "*.npz"))  # for fake transits
 
             pool.map(run_lc, pkl)
             pool.map(run_lc, fits)
-            pool.map(run_lc, npz)
 
         else:
             print("globbing subdirectories")
@@ -248,8 +223,3 @@ if __name__ == "__main__":
 
             pool.map(run_lc, pkl)
             pool.map(run_lc, fits)
-    end_time = time.time()
-    total_time = end_time - start_time
-    print(f"Completed in {(total_time)/60} minutes.")
-
-## trying a piece of code here. please work

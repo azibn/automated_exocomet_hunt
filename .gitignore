@@ -1,5 +1,5 @@
 # Build files
-analysis_tools_cython.c*
+#analysis_tools_cython.c*
 build
 .nfs*
 .vscode/
@@ -28,7 +28,7 @@ injection_recovery_*
 
 
 # plots
-*.png
+
 plot*
 
 # poster
@@ -38,8 +38,7 @@ plot*
 injection_tools.py
 lookup_checker.py
 lost_ids.txt
-notebooks/process.ipynb
-
+*.npy
 
 # xrp files
 qstat.py
@@ -63,7 +62,6 @@ test*
 test_lightcurves/
 .idea/
 Kepler/
-__pycache__/
 figs/lightcurve.ipynb
 lightcurve.ipynb
 mastDownload/
@@ -85,3 +83,18 @@ tic_ra_dec.py
 lightcurve_info/
 s6_tmag4_5.png
 s6_tmag_7_8.png
+
+
+.png.png
+5daysmoothingfilter.png
+60percent_v2.png
+__pycache__/
+analysis_tools_cython.cpython-37m-x86_64-linux-gnu.so
+distribution.png
+ir_plots/
+ir_plotsv2/
+noiseless_real_time_coverage.png
+poster/
+recovery_plot.png
+sky positions.png
+

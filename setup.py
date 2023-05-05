@@ -6,6 +6,7 @@ import numpy
 
 setup(
     name="exocomet_search",
+    # package_dir={'scripts': ''},
     ext_modules=cythonize(
         "scripts/analysis_tools_cython.pyx", compiler_directives={"language_level": 3}
     ),
