@@ -1,4 +1,4 @@
-**Note: This work has been mainly developed with focus on the internal lightcurves in the collaboration. However, they should still be compatible with lightcurves obtained via MAST or `lightcurve`.**
+**Note: This work has been mainly developed with focus on the internal lightcurves in the collaboration. However, they should still be compatible with lightcurves obtained via MAST or `lightkurve`.**
 
 Code for automated detection of exocomets in light curves.
 
@@ -34,27 +34,21 @@ to the base environment and then
 
 # Usage
 
-These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves.
+These scripts can run on TESS and Kepler lightcurves. Our analysis uses an ealier iteration of the `GSFC-ELEANOR-LITE` lightcurves, a lightweight version of the [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves. More information on these lightcurves can be found [here](https://archive.stsci.edu/hlsp/gsfc-eleanor-lite). The pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) lightcurves downloaded from MAST. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves.
 
 Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/). 
 
-TESS SPOC lightcurves can also be obtained from [MAST](https://archive.stsci.edu/missions/tess/tid/).
+`batch_analyse` can run on a single file, a directory of files, or the entire sector. Results will be output to a text file with one row per file. For example, with a `.pkl` lightcurve you can run:
 
-`single_analysis.py` runs on a single file, for example:
- 
- TESS:
+    python batch_analyse.py /storage/.../tesslcs_sector_6_104/2_min_cadence_targets/tesslc_270577175.pkl
 
-    python single_analysis_xrp.py tesslcs_sector_6_104_2_min_cadence_targets_tesslc_270577175.pkl
- 
- Kepler:
+For `.fits` format lightcurves for example, one can run:
 
-    wget https://archive.stsci.edu/missions/kepler/lightcurves/0035/003542116/kplr003542116-2012088054726_llc.fits
-    python single_analysis.py kplr003542116-2012088054726_llc.fits
+    python batch_analyse.py hlsp_tess-spoc_tess_phot_0000000270577175-s0006_tess_v1_lc.fits
+    
+The script has multiple arguments that you can call (number of threads, output file location, smoothing method from `wotan` etc), where some are mandatory. For more information on these flags, run the script with `-h`.
 
-
-`batch_analyse.py` runs on directories of files, outputting results to a text file with one row per file. `archive_analyse.sh` is a bash script for processing compressed archives of light curve files, extracting them temporarily to a directory.  Both these scripts have multiple options (number of threads, output file location ...), run with help flag (`-h`) for more details.
-
-### Integration with `lightkurve`
+## Integration with `lightkurve`
 
 The functions should work with lightcurves obtained from the `lightkurve` package. However, the main function of the search, `processing`, requires the data to be in the format of `time`, `flux`, `quality`, `flux error` in either a `astropy.Table` or `pandas.DataFrame` format right now, so make sure to have this format if you are looking to process the lightcurve.
 
