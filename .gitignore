@@ -11,14 +11,8 @@ archive_analyse.sh
 #notebooks/
 
 # Data folders
-lc_arraydata/
-lc_metadata/
-tess2018206045859-s0001-0000000024265755-0120-s_lc.fits
-tess_SPOC/
-tess_testlcs/
 betapic/
 kepler/
-gif/
 data/
 catalogs/
 candidates/
@@ -26,23 +20,17 @@ umap_projections/
 mastDownload/
 injection_recovery_*
 
-
-# plots
-
-plot*
-
 # poster
-
+poster/
 
 # extra
 injection_tools.py
 lookup_checker.py
 lost_ids.txt
-*.npy
+__pycache__
 
 # xrp files
 qstat.py
-s6stat*
 
 # output files
 output*
@@ -50,51 +38,15 @@ output*
 # batch_analyse_v2
 batch_reanalyse_asym.py
 
-# tests
-test*
-
 # Temp vim files
 *.swp
 
 # other
 .DS_Store
 .ipynb_checkpoints/
-test_lightcurves/
 .idea/
-Kepler/
-figs/lightcurve.ipynb
-lightcurve.ipynb
 mastDownload/
 maxsector.py
-tess/
-MAD figs/
-Notebooks/mastDownload
-kplr003542116-2012088054726_llc.fits
-old_kepler_files/
-tess2018206190142-s0001-s0006-0000000270577175-00196_dvt.fits
-7175/
-figs.ipynb
-figs/
-figs_tess/
-sky_positions.py
-test.csv
-tic_ra_dec.py
-# data
-lightcurve_info/
-s6_tmag4_5.png
-s6_tmag_7_8.png
-
-
-.png.png
-5daysmoothingfilter.png
-60percent_v2.png
-__pycache__/
-analysis_tools_cython.cpython-37m-x86_64-linux-gnu.so
-distribution.png
 ir_plots/
 ir_plotsv2/
-noiseless_real_time_coverage.png
-poster/
-recovery_plot.png
-sky positions.png
-
+gif/
