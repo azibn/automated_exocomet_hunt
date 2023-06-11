@@ -8,22 +8,26 @@ dependencies:
   - astroquery
   - black
   - bokeh==2.2.3
-  - celerite
   - cython
   - jupyterlab
   - matplotlib
-  - numba
   - numexpr
+  - numba==0.53.0
+  - numpy
   - pandas
+  - plotly
   - scikit-learn
   - scipy
   - seaborn
+  - tensorflow
   - tk
   - tqdm
   - pickle5
   - pip
+  - pylint
+  - umap-learn
   - pip:
     - lightkurve>=2
     - eleanor
-    - kplr
     - markupsafe==2.0.1
+    - wotan

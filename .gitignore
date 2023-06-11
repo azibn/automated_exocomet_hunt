@@ -1,22 +1,39 @@
 # Build files
-analysis_tools_cython.c*
+#analysis_tools_cython.c*
 build
+.nfs*
+.vscode/
 
 # old Kepler files
 archive_analyse.sh
 
+# Jupyter notebooks
+#notebooks/
+
 # Data folders
-results
-tess2018206045859-s0001-0000000024265755-0120-s_lc.fits
-tess_SPOC/
-tess_testlcs/
 betapic/
 kepler/
-gif/
-mad_figs
+data/
+catalogs/
+candidates/
+umap_projections/
+mastDownload/
+injection_recovery_*
+
+# poster
+poster/
+
+# extra
+injection_tools.py
+lookup_checker.py
+lost_ids.txt
+__pycache__
+
+# xrp files
+qstat.py
 
 # output files
-output_s*
+output*
 
 # batch_analyse_v2
 batch_reanalyse_asym.py
@@ -27,26 +44,9 @@ batch_reanalyse_asym.py
 # other
 .DS_Store
 .ipynb_checkpoints/
-
 .idea/
-Kepler/
-__pycache__/
-figs/lightcurve.ipynb
-lightcurve.ipynb
 mastDownload/
 maxsector.py
-tess/
-MAD figs/
-Notebooks/mastDownload
-kplr003542116-2012088054726_llc.fits
-notebooks/Untitled.ipynb
-old_kepler_files/
-tess2018206190142-s0001-s0006-0000000270577175-00196_dvt.fits
-7175/
-figs.ipynb
-figs/
-figs_tess/
-sky_positions.py
-test.csv
-tic_ra_dec.py
-# data
+ir_plots/
+ir_plotsv2/
+gif/
