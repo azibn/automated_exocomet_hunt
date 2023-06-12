@@ -19,6 +19,7 @@ candidates/
 umap_projections/
 mastDownload/
 injection_recovery_*
+test_lightcurves/
 
 # poster
 poster/

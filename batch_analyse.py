@@ -14,7 +14,6 @@ from scripts.analysis_tools_cython import (
     processing,
     folders_in,
 )
-
 os.environ["OMP_NUM_THREADS"] = "1"
 warnings.filterwarnings("ignore")
 
@@ -116,8 +115,7 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
 
         else:
             table, lc_info = import_lightcurve(f_path, flux=args.f)
-            print(table)
-            # table = table["TIME", args.f, "QUALITY","PDSCAP_FLUX_ERR"]
+            table = table["TIME", args.f, "QUALITY","PDCSAP_FLUX_ERR"]
         result_str, save_data = processing(
             table, f_path, lc_info, method=args.m, make_plots=args.p, twostep=args.step
         )
@@ -184,6 +182,7 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
         traceback.print_exc()
 
 
+
 if __name__ == "__main__":
     if "sector" in args.path[0]:
         sector = int(os.path.split(args.path[0])[0].split("sector")[1].split("_")[1])
@@ -209,8 +208,9 @@ if __name__ == "__main__":
             fits = glob.glob(os.path.join(path, "*lc.fits"))
             pkl = glob.glob(os.path.join(path, "*.pkl"))
 
-            pool.map(run_lc, pkl)
             pool.map(run_lc, fits)
+            pool.map(run_lc, pkl)
+            
 
         else:
             print("globbing subdirectories")
@@ -221,5 +221,6 @@ if __name__ == "__main__":
 
             print("running the search...")
 
-            pool.map(run_lc, pkl)
             pool.map(run_lc, fits)
+            pool.map(run_lc, pkl)
+            

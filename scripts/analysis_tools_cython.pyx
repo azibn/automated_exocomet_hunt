@@ -18,7 +18,7 @@ mpl.rcParams['agg.path.chunksize'] = 10000
 from scripts.post_processing import *
 from wotan import flatten
 from statistics import median,mean
-from scipy.stats import skewnorm
+from scipy.stats import skewnorm, chisquare
 import numpy as np
 cimport numpy as np
 import math
@@ -715,8 +715,8 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
 
         ## calculating noise estimate (rms of flattened lightcurve)
         ### calculate rms of lightcurve
-        to_flatten = flatten(table[table.colnames[0]],table[table.colnames[1]], window_length=2.5,method='median',return_trend=False) * table[table.colnames[1]]
-        noise_estimate = np.std(to_flatten) * 1e6 # noise in ppm
+        #to_flatten = flatten(table[table.colnames[0]],table[table.colnames[1]], window_length=2.5,method='median',return_trend=False) * table[table.colnames[1]]
+        #noise_estimate = np.std(to_flatten) * 1e6 # noise in ppm
         
         #np.sqrt(np.mean(to_flatten**2))
 
@@ -770,6 +770,9 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
         ## M-statistic
         M_stat = calc_mstatistic(flux)
 
+        ## chi-square
+        chisq = chisquare(flux)[0] ## [1] returns the p-value
+
         ## Perform T-statistic search method
         T1 = test_statistic_array(flux,60 * factor)
         m, n = np.unravel_index(
@@ -809,7 +812,7 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
                 ' '.join([str(round(a,8)) for a in
                     [minT, minT/Ts, minT_time,
                     asym,width1,width2,
-                    minT_duration,depth, peak_power, M_stat, skewness, skewness_error, noise_estimate]])+\
+                    minT_duration,depth, peak_power, M_stat, skewness, skewness_error, m,n, chisq]])+\
                 ' '+s
         
         if make_plots:
