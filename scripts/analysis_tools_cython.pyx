@@ -486,7 +486,7 @@ def skewed_gaussian_curve_fit(x,y,y_err):
     ### params initialisation for skewness, time, mean and sigma
     params_init = [0.1,x[i],0.1,0.0001] # i find these good to initialise with    
     params_bounds = [[-np.inf,x[0],0,0], [np.inf,x[-1],width/3,width/3]] # width/3 I think is the sensible choice.
-    params,cov = curve_fit(skewed_gaussian,x,y,p0=params_init,bounds=params_bounds,sigma=y_err,maxfev=1000000)
+    params,cov = curve_fit(skewed_gaussian,x,y,p0=params_init,bounds=params_bounds,sigma=y_err)
     
     return params, cov 
 
@@ -630,8 +630,8 @@ def get_quality_indices(sap_quality):
 
     return q_indices
 
-def normalise_lc(flux):
-    return flux/flux.mean()
+def normalise_error(flux_error):
+    return flux_error/flux_error.mean()
 
 def remove_zeros(data, flux):
     return data[data[flux] != 0]
@@ -649,9 +649,6 @@ def calc_mstatistic(flux):
     ext_flux = flux[extrema]
     diff = np.round((avg-np.mean(ext_flux))/stdev, 3)  # ! The M Statistic
     return diff
-
-def normalise_error(flux, flux_error):
-    return flux_error/np.nanmedian(flux)
 
 def smoothing(table,method,window_length=8,power=0.08):
     """
@@ -711,15 +708,12 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
     if len(table) > 120: # 120 represents 2.5 days
 
         ## normalising errors
-        table[table.colnames[3]] = normalise_error(table[table.colnames[1]],table[table.colnames[3]]) ## generalised for lightcurves with different header names
+        table[table.colnames[3]] = normalise_error(table[table.colnames[3]]) ## generalised for lightcurves with different header names
 
         ## calculating noise estimate (rms of flattened lightcurve)
         ### calculate rms of lightcurve
         #to_flatten = flatten(table[table.colnames[0]],table[table.colnames[1]], window_length=2.5,method='median',return_trend=False) * table[table.colnames[1]]
         #noise_estimate = np.std(to_flatten) * 1e6 # noise in ppm
-        
-        #np.sqrt(np.mean(to_flatten**2))
-
 
         # smoothing operation and normalisation of flux
         ## note: since Wotan performs time-windowed smoothing without the need for interpolation, `clean_data` is placed after the smoothing step to create interpolated points at data gaps (mostly for visual benefit). 
@@ -759,6 +753,7 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
         timestep = calculate_timestep(table)
         factor = ((1/48)/timestep)
         N = len(t)
+        #flux_error = normalise_error(flux_error)
         ones = np.ones(N)
 
         ## fourier and Lomb-Scargle computations
@@ -808,7 +803,7 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
         s = classify(m,n,real,asym)
 
         result_str =\
-                f+' '+\
+                f_path+' '+str(obj_id)+ ' '+\
                 ' '.join([str(round(a,8)) for a in
                     [minT, minT/Ts, minT_time,
                     asym,width1,width2,
@@ -954,6 +949,9 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
             #    fig.savefig(f'plots/{obj_id}_twostep_{method}.png',dpi=300)  
 
             plt.close()
+
+    if return_cutouts:
+        np.savez(f"{f}", time=info[0], flux=info[1], quality=info[2],flux_error=info[3])
 
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
