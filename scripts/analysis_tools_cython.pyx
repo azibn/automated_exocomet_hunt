@@ -172,7 +172,7 @@ def import_XRPlightcurve(file_path,sector: int,clip=3,flux=None,drop_bad_points=
 
 
 def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX', 
-                      ok_flags=[]):
+                      ok_flags=[], return_type='astropy'):
     """Returns (N by 2) table, columns are (time, flux).
     flux options: 'PDCSAP_FLUX', 'SAP_FLUX', 'FLUX'. Default is PDCSAP_FLUX.
     
@@ -238,6 +238,9 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
     ## flux smoothened out by changing those points to 0.5*distance between neighbouring points
     for i in spikes:
         table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
+
+    if (return_type == 'pandas') or (return_type == 'pd'):
+        return table.to_pandas(), info
 
     return table, info
 
@@ -688,7 +691,7 @@ def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     final_flux *= real
     return final_flux, periodicnoise_ls2, original_masked_flux
 
-def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=False,twostep=False,return_arraydata=False,noiseless=False,return_cutouts=False): 
+def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=False,twostep=False,return_arraydata=False,noiseless=False,som_cutouts=False): 
     """the main bulk of the search algorithm.
     inputs:
     - :table: lightcurve table containing time, flux, quality, and flux error (needs to only be these four columns)
@@ -954,7 +957,7 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
 
-    if return_cutouts:
+    if som_cutouts:
         np.savez(obj_id, time=info[0], flux=info[1], quality=info[2],flux_error=info[3])
 
     if method == None:
