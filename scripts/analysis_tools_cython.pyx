@@ -531,6 +531,8 @@ def classify(m,n,real,asym):
         return "gap"
     elif asym == -5:
         return "gapJustBefore"
+    elif asym == -3:
+        return "noModel"
     elif m < 3:
         return "point"
     elif real[(n-2*m):(n-m)].sum() < 0.5*m:
@@ -589,22 +591,22 @@ def calc_shape(m,n,time,flux,quality,flux_error,n_m_bg_start=2,n_m_bg_scale_fact
 
         try:
             params1, pcov1 = single_gaussian_curve_fit(t,-x)
-            params2, pcov2 = comet_curve_fit(t,-x)
+            #params2, pcov2 = comet_curve_fit(t,-x)
             params3, pcov3 = skewed_gaussian_curve_fit(t,x,fe)
            
         except:
             return -3,-3,-3,-3,-3,-3,-3
 
         fit1 = -gauss(t,*params1)
-        fit2 = -comet_curve(t,*params2)
+        #fit2 = -comet_curve(t,*params2)
         fit3 = skewed_gaussian(t,*params3)
-        depth = fit2.min() # depth of comet (based on minimum point; not entirely accurate, but majority of the time true)
+        depth = fit3.min() # depth of comet (based on minimum point; not entirely accurate, but majority of the time true)
         min_time = t[np.argmin(x)] # time of midtransit/at minimum point
-        scores = [score_fit(x,fit) for fit in [fit1,fit2]] # changed for the skewed gaussian fit
+        scores = [score_fit(x,fit) for fit in [fit1,fit3]] # changed for the skewed gaussian fit
         if scores[1] > 0:
             skewness = params3[0]
             skewness_error = np.sqrt(np.diag(pcov3)[0])
-            return scores[0]/scores[1], params2[2], params2[3], depth, [t,x,q,fe,fit1,fit2,fit3,background_level], skewness, skewness_error
+            return scores[0]/scores[1], params3[2], params3[3], depth, [t,x,q,fe,fit1,fit3,background_level], skewness, skewness_error # fit2
         else:
 
             return -1,-1,-1,-1,-1,-1,-1
@@ -704,7 +706,6 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
 
     if isinstance(table, pd.DataFrame):
         table = Table.from_pandas(table)
-
     if len(table) > 120: # 120 represents 2.5 days
 
         ## normalising errors
@@ -803,7 +804,7 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
         s = classify(m,n,real,asym)
 
         result_str =\
-                f_path+' '+str(obj_id)+ ' '+\
+                f_path+' '+str(obj_id) + ' '+\
                 ' '.join([str(round(a,8)) for a in
                     [minT, minT/Ts, minT_time,
                     asym,width1,width2,
@@ -940,7 +941,7 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
             #    fig.suptitle("ID not identified.",fontsize = 16,y=0.93)
             #    pass
 
-            fig.savefig(f'plots/{obj_id}.png',dpi=300) 
+            #fig.savefig(f'plots/{obj_id}.png',dpi=300) 
 
 
             #if twostep:
@@ -950,11 +951,11 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
 
             plt.close()
 
-    if return_cutouts:
-        np.savez(f"{f}", time=info[0], flux=info[1], quality=info[2],flux_error=info[3])
-
     else:
         result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
+
+    if return_cutouts:
+        np.savez(obj_id, time=info[0], flux=info[1], quality=info[2],flux_error=info[3])
 
     if method == None:
         return result_str, [t, flux, quality]
