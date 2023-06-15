@@ -655,7 +655,7 @@ def calc_mstatistic(flux):
     diff = np.round((avg-np.mean(ext_flux))/stdev, 3)  # ! The M Statistic
     return diff
 
-def smoothing(table,method,window_length=8,power=0.08):
+def smoothing(table,method,window_length=2.5,power=0.08):
     """
     Smoothing function. options:
     lomb-scargle/fourier: use this for both one and twostep fourier methods.
@@ -701,7 +701,7 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
     - :make_plots: Create gridspec-based visualisation. Contents include plots of the lightcurve (pre and post-cleaning), the T-statistic of the lightcurve, its position on the SNR/alpha distribution and a zoomed-in transit of potential candidates. 
     - The lightcurve/table needs to be in the format of time, flux, quality, flux error.
     """
-    f = os.path.basename(f_path)
+    file_basename = os.path.basename(f_path)
     try:
         obj_id = lc_info[0]
     except TypeError:
@@ -955,15 +955,23 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
             plt.close()
 
     else:
-        result_str = f+' 0 0 0 0 0 0 0 0 notEnoughData'
+        result_str = file_basename+' 0 0 0 0 0 0 0 0 notEnoughData'
 
     if som_cutouts:
-        np.savez(obj_id, time=info[0], flux=info[1], quality=info[2],flux_error=info[3])
+        data_to_cut = pd.DataFrame(data=[[t, flux, quality, flux_error]].T)
+        data_to_cut.columns = ['time','flux','quality','flux_err']
+        som_lightcurve = create_som_cutout(data_to_cut,half_cutout_length=120)
+        try:
+            np.savez('{obj_id}.npz',time=som_lightcurve.TIME,flux=som_lightcurve.PDCSAP_FLUX,quality=som_lightcurve.QUALITY,flux_err=som_lightcurve.PDCSAP_FLUX_ERR)
+        except TypeError:
+            obj_id = input("object id: ")
+            np.savez(f'{obj_id}.npz',time=som_lightcurve.TIME,flux=som_lightcurve.PDCSAP_FLUX,quality=som_lightcurve.QUALITY,flux_err=som_lightcurve.PDCSAP_FLUX_ERR)
+            print(f"saved as {obj_id}.npz")
 
     if method == None:
         return result_str, [t, flux, quality]
     else:
-        return result_str, [t, flux, trend_flux, quality]
+        return result_str, [t, flux, normalise_flux(trend_flux), quality]
 
 
 
@@ -977,15 +985,18 @@ def folders_in(path_to_parent):
     except:
         pass
 
+def create_som_cutout(table, half_cutout_length=120):
+    """creates cutout of lightcurve to prepare for SOM. The SOM requires all lightcurves to be the same length.
 
-def calculate_noise(lc,sector, flux='corrected flux'):
+    inputs:
+    :table: lightcurve data
+    :half_cutout_length: the size of half the window desired in number of cadences eg: 120 cadences corresponds to 2.5 days wide, therefore the full window is 5 days long.
 
-    "flux: flux to be used"
-    print(lc)
-    data, lc_info = import_XRPlightcurve(lc,sector=6,drop_bad_points=False)
-    flux = data[flux]
-    norm_flux = normalise_flux(flux)
-    flux_rms = np.sqrt(np.sum(flux**2)/len(flux))
-    norm_flux_rms = np.sqrt(np.sum(norm_flux**2)/len(norm_flux))
+    returns:
+    :cutout: a sliced lightcurve centred on the depth from the model fitting
+    """
 
-    return flux_rms, norm_flux_rms
+    if not isinstance(table, pd.DataFrame):
+        table = table.to_pandas()
+    som_cutout = table[table.iloc[(table['time']-time).abs().argsort()[:1]]['time'].index[0] - half_cutout_length: table.iloc[(table['time']-time).abs().argsort()[:1]]['time'].index[0] + half_cutout_length]
+    return som_cutout
