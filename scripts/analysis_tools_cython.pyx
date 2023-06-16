@@ -27,12 +27,21 @@ import sys,os
 import kplr
 import data
 import warnings
+import som_utils
 warnings.filterwarnings("ignore")
 
 
 
 def download_lightcurve(file, path='.'):
-    """Get a light curve path, downloading if necessary."""
+    """
+    Function: Downloads a lightcurve file from Kepler based on the given file name. It utilizes the kplr package to interact with the Kepler Input Catalog (KIC) API.
+
+    Parameters:
+    :file (str): The name of the lightcurve file to download.
+    :path (str, optional): The path where the lightcurve file will be saved. The default is the current directory ('.').
+    
+    Returns:
+    :file_path (str): The path of the downloaded lightcurve file."""
 
     kic_no = int(file.split('-')[0].split('kplr')[1])
 
@@ -54,6 +63,7 @@ def download_lightcurve(file, path='.'):
     _ = lcs[i].open() # force download
     return lcs[i].filename
 
+### this function might be deleted
 def import_eleanor(tic,sector=None):
     """Converting eleanor lightcurves to dataframes to work with our pipeline
     tic: TIC ID
@@ -68,25 +78,25 @@ def import_eleanor(tic,sector=None):
     df.columns = columns
     return df
 
-def import_tic(tic_id):
-    """this function is used in the case where you only know the ID of the lightcurve. The function will look for the lightcurve in all subdirectories and download the first (need to have a .download(), similar to lightkurve.)"""
+def import_XRPlightcurve(file_path,sector: int,clip=3,drop_bad_points=True,ok_flags=[],return_type='astropy'):
 
-
-def import_XRPlightcurve(file_path,sector: int,clip=3,flux=None,drop_bad_points=True,ok_flags=[],return_type='astropy'):
     """
-    file_path: path to file (takes pkl and csv)
-    sector = lightcurve sector
-    drop_bad_points: Removing outlier points. Default True
-    mad_plots: plots MAD comparisons
-    q: lightcurve quality, default 0 (excludes all non-zero quality)
-    clip: Sigma to be clipped by (default 4)
-    return_type: Default 'astropy'. Pandas DataFrame also available with 'pandas' 
+     Function: Imports XRP lightcurve and performs data cleaning.
+    
+    
+    Parameters:
+    :file_path (str): The path to the lightcurve files (in .pkl format) to import.
+    :sector (int): TESS Sector.
+    :clip (float, optional): The sigma value used for sigma clipping. The default value is 3.
+    :drop_bad_points (bool, optional): Removes outliers based on non-zero quality flags. The default value is True.
+    :ok_flags (list, optional): A list of additional quality flags that are considered acceptable and should not be dropped during the preprocessing. 
+        - New flag [14] is the MAD excluded data.
+    :return_type (str, optional): Specifies the format of the returned data. 'astropy' returns an astropy Table object, while 'pandas' returns a pandas DataFrame. The default value is 'astropy'.
+    
+    Returns:
+    :data (pd.DataFrame or astropy.table.Table): The preprocessed lightcurve data.
+    :info (list): Information about the lightcurve: TIC ID, RA, DEC, TESS magnitude, Camera, and Chip."""
 
-    returns
-        - table: Astropy table of lightcurve
-        - ok_flags = [14]: the MAD excluded data.
-        - info: additional information about the lightcurve (TIC ID, RA, DEC, TESS magnitude, Camera, Chip)
-    """
     if file_path.endswith('.pkl'):
         lc = pd.read_pickle(file_path)
 
@@ -161,7 +171,6 @@ def import_XRPlightcurve(file_path,sector: int,clip=3,flux=None,drop_bad_points=
 
     for i in spikes:
         table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
-    #print(len(table),"length at end")
 
     if return_type == 'pandas':
 
@@ -173,14 +182,21 @@ def import_XRPlightcurve(file_path,sector: int,clip=3,flux=None,drop_bad_points=
 
 def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX', 
                       ok_flags=[], return_type='astropy'):
-    """Returns (N by 2) table, columns are (time, flux).
-    flux options: 'PDCSAP_FLUX', 'SAP_FLUX', 'FLUX'. Default is PDCSAP_FLUX.
-    
 
-    Flags deemed to be OK are:
-    5 - reaction wheel zero crossing, matters for short cadence (Kepler)
     """
+    Function: Imports lightcurve and performs data cleaning.
+    
+    Parameters:
+    :file_path (str): The path to the lightcurve file to import.
+    :drop_bad_points (bool, optional): Specifies whether to drop points flagged as bad during the preprocessing. The default value is True.
+    :flux (str, optional): The flux type of the lightcurve. Options: 'PDCSAP_FLUX', 'SAP_FLUX', 'FLUX'. The default is 'PDCSAP_FLUX'. 
+    :ok_flags (list, optional): A list of additional quality flags that are considered acceptable and should not be dropped during the preprocessing. Flags deemed to be OK:
+        - 5: reaction wheel zero crossing, matters for short cadence (Kepler)
+    :return_type (str, optional): Specifies format of the returned data. Options: 'astropy', 'pandas'. The default value is 'astropy'.
 
+    Returns:
+    :data (astropy.table.table orpd.DataFrame): The lightcurve with bad points removed by default.
+    :info (list): Information about the imported data: ID, Magnitude, Sector/Quarter number, RA (Right Ascension), and DEC (Declination)."""
     try:
         hdulist = fits.open(file_path)
     except FileNotFoundError:
@@ -201,8 +217,7 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
     else:
         table = Table(scidata)['TIME',flux,'QUALITY','PDCSAP_FLUX_ERR']
         info = [objdata['OBJECT'],objdata['TICID'],objdata['TESSMAG'],objdata['SECTOR'],objdata['CAMERA'],objdata['CCD'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
-    #except:
-        #table = Table(scidata)['TIME','SAP_FLUX','QUALITY']
+    ## To-do: Add TASOC compatibility.
     
     hdulist.close()
 
@@ -217,10 +232,8 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
             if j+1 not in ok_flags:
                 bad_points += q.tolist() # adds bad_points by value of q (the quality indices) and converts to list
     
-
         # bad_points = [i for i in range(len(table)) if table[i][2]>0]
         table.remove_rows(bad_points)
-
 
     # Delete rows containing NaN values. 
     ## if flux or time columns are NaN's, remove them.
@@ -246,8 +259,16 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
 
 
 def calculate_timestep(table):
-    """Returns median value of time differences between data points,
-    estimate of time delta data points."""
+    """
+    Function: Calculates the median value of the time differences between data points in a given table. 
+    Provides an estimate of the timestep (or time delta) between consecutive data points.
+
+    Parameters:
+    :table (array or pandas.DataFrame): The input table containing time-series data.
+
+    Returns:
+    :dt (float): The estimated time interval or timestep between consecutive data points."""
+
     try:
         dt = [ table[i+1][0] - table[i][0] for i in range(len(table)-1) ] # calculates difference between (ith+1) - (ith) point 
         dt.sort()
@@ -258,9 +279,20 @@ def calculate_timestep(table):
     
 
 def clean_data(table):
-    """Interpolates missing data points, so we have equal time gaps
-    between points. Returns three numpy arrays, time, flux, real.
-    real is 0 if data point interpolated, 1 otherwise."""
+    """
+    Function: Interpolating missing data points, ensuring equal time gaps between points. 
+    Returns five numpy arrays: time, flux, quality, real, and flux_error. Real is 0 if data point interpolated, 1 otherwise.
+
+    Parameters:
+    :table (astropy.table.table): The input table containing time-series data.
+    
+    Returns:
+    :time (numpy.ndarray): An array of timestamps for each data point, including the interpolated points.
+    :flux (numpy.ndarray): An array of flux values for each data point, including the interpolated points.
+    :quality (numpy.ndarray): An array indicating the quality of each data point, including the interpolated points.
+    :real (numpy.ndarray): An array indicating whether each data point is real (1) or interpolated (0).
+    :flux_error (numpy.ndarray): An array of flux error values for each data point, including the interpolated points."""
+
 
     time = []
     flux = []
@@ -298,15 +330,30 @@ def clean_data(table):
 
 
 def normalise_flux(flux):
-    """Requires flux to be a numpy array.
-    Normalisation is x --> (x/mean(x)) - 1"""
+    """
+    Function: Normalises flux values to 0.
+    - Normalisation is x --> (x/mean(x)) - 1
+
+    Parameters:
+    :flux (numpy.ndarray): The input flux to be normalized.
+    
+    Returns:
+    :normalised flux (numpy.ndarray): The normalized flux array."""
+
     flux = np.nan_to_num(flux)
     return flux/flux.mean() - np.ones(len(flux))
 
 
 def fourier_filter(flux,freq_count):
-    """Attempt to remove periodic noise by finding and subtracting
-    freq_count number of peaks in (discrete) fourier transform."""
+    """Function: Attempts to remove periodic noise from the flux by finding and subtracting a specified (freq_count)
+     number of peaks in the discrete Fourier transform.
+
+    Parameters:
+    :flux (numpy.ndarray or array): The input flux array to be filtered.
+    :freq_count (int): The number of peaks to be removed from the Fourier transform.
+
+    Returns:
+    :filtered_flux (numpy.ndarray): The filtered flux array after subtracting the periodic approximation."""
 
     A = np.fft.rfft(flux)
     A_mag = np.abs(A)
@@ -369,10 +416,18 @@ def lombscargle_plotting(time,flux,real,min_score):
 
 def test_statistic_array(np.ndarray[np.float64_t,ndim=1] flux, int max_half_width):
     """
-    inputs:
-    - flux
-    - maximum half width in cadences (eg 2.5 days: (48*2.5)/2) for 30 min)
+    Function: Calculates the test statistic array for a given flux array and maximum half width. 
+    The test statistic array represents the statistical significance of the flux values at different widths.
+    - Maximum half width is given in in cadences (eg 2.5 days: (48*2.5)/2) for 30 min)
+
+    Parameters:
+    flux (np.ndarray[np.float64_t, ndim=1]): Input flux array.
+    max_half_width (int): Maximum half width in cadences.
+
+    Returns:
+    t_test (np.ndarray[np.float64_t, ndim=2]): Test statistic array.
     """
+
     cdef int N = flux.shape[0]
     cdef int n = max_half_width # int(max_half_width) max number of cadences in width array should be 120 (2.5 days)
 
@@ -407,9 +462,31 @@ def test_statistic_array(np.ndarray[np.float64_t,ndim=1] flux, int max_half_widt
 
 
 def gauss(t,A,t0,sigma):
+    """
+    Function: Returns the value of a Gaussian distribution at a given time.
+
+    Parameters:
+        :t (float or array): Time or array of times at which to evaluate the Gaussian function.
+        :A (float): Amplitude of the Gaussian peak.
+        :t0 (float): Mean or centre of the Gaussian distribution.
+        :sigma (float): Standard deviation or width of the Gaussian distribution.
+
+    Returns:
+        float or array: Value of the Gaussian function at the given time(s)."""
+
     return abs(A)*np.exp( -(t - t0)**2 / (2 * sigma**2) )
 
 def single_gaussian_curve_fit(x,y):
+    """
+    Function: Performs a curve fit to the Gaussian function given time and flux.
+
+    Parameters:
+        x (array): Independent variable (x-axis) values (time).
+        y (array): Dependent variable (y-axis) values (flux).
+
+    Returns:
+        params, cov (tuple): The fitted parameters and the covariance matrix."""
+
     # Initial parameters guess
     i = np.argmax(y)
     A0 = y[i]
@@ -454,8 +531,19 @@ def double_gaussian_curve_fit(T):
 
 def comet_curve(t,A,t0,sigma,tail):
     """
-    Equation for asymmetric Gaussian, representing the comet. The difference is the 1/tail term after the mid-transit.
-    """
+    Function: Calculates the values of an asymmetric Gaussian function representing a comet curve. 
+    The difference is the exponential 1/tail term after the mid-transit.
+
+    Parameters:
+        t (array): Independent variable (time) values.
+        A (float): Amplitude of the Gaussian curve.
+        t0 (float): Mean (centre) of the Gaussian curve.
+        sigma (float): Standard deviation of the Gaussian curve.
+        tail (float): Tail parameter controlling decay rate after t0.
+
+    Returns:
+        array: The computed values of the asymmetric Gaussian curve."""
+
     x = np.zeros(len(t))
     for i in range(len(t)):
         if t[i] < t0:
@@ -527,6 +615,19 @@ def interpret(params):
 
 
 def classify(m,n,real,asym):
+    """
+    Function: Classifies the lightcurve based on parameters from the T-statistic and `calc_shape`.
+
+    Parameters:
+    :m (int):
+    :n (int):
+    :real (int):
+    :asym (float): The asymmetry score calculated by diving the Gaussian by the skewed Gaussian model.
+
+    Returns:
+    :classification: Classification of data. Options are: "maybeTransit", "artefact", "noModelFitted", "gapJustBefore", "gap", "end".
+    """
+
     N = len(real)
     if asym == -2:
         return "end"
@@ -535,7 +636,7 @@ def classify(m,n,real,asym):
     elif asym == -5:
         return "gapJustBefore"
     elif asym == -3:
-        return "noModel"
+        return "noModelFitted"
     elif m < 3:
         return "point"
     elif real[(n-2*m):(n-m)].sum() < 0.5*m:
@@ -628,20 +729,32 @@ def d2q(d):
 
 
 def get_quality_indices(sap_quality):
-    '''Return list of indices where each quality bit is set'''
+    """
+    Function: Returns a list of indices where each quality bit is set.
+
+    Parameters:
+        sap_quality (array): Array containing the SAP_QUALITY values.
+
+    Returns:
+        list: List of indices where each quality bit is set."""
+
     q_indices = []
     for bit in np.arange(21)+1:
         q_indices.append(np.where(sap_quality >> (bit-1) & 1 == 1)[0]) # returns sap_quality as bit (2**bit) 
 
     return q_indices
 
-def normalise_error(flux_error):
-    return flux_error/flux_error.mean()
-
-def remove_zeros(data, flux):
-    return data[data[flux] != 0]
-
 def calc_mstatistic(flux):
+    """
+    Function: Calculates the M Statistic, which quantifies the deviation of average flux from the extrema.
+    - First calculates the average and standard deviation of the flux values. Then, identifies the extrema by considering the minimum and maximum 10% of flux values.
+
+    Parameters:
+        flux (array): Flux.
+
+    Returns:
+        float: M-Statistic."""
+
     avg = np.nanmedian(flux)
     stdev = np.nanstd(flux)
     # Extrema defined as the min and max 10% fluxes
@@ -657,9 +770,17 @@ def calc_mstatistic(flux):
 
 def smoothing(table,method,window_length=2.5,power=0.08):
     """
-    Smoothing function. options:
-    lomb-scargle/fourier: use this for both one and twostep fourier methods.
-    wotan options: 'biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline','savgol'.
+    Function: Smoothing function for lightcurve data.
+
+    Parameters:
+    :table (astropy.table.table): lightcurve data (minimum input for the table is to have time and flux).
+    :method: Choices from: 'lomb-scargle','fourier', 'biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline','savgol'.
+    - 'lomb-scargle' and 'fourier' are from the Kepler search.
+    - All other smoothing options are from the `Wotan` library.
+
+    Returns:
+    :cleaned_flux: The cleaned flux by the chosen smoothing method.
+    :trend_flux: The trend that was removed in the smoothing process.
     """
     wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline','savgol']
 
@@ -691,16 +812,33 @@ def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     final_flux *= real
     return final_flux, periodicnoise_ls2, original_masked_flux
 
-def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=False,twostep=False,return_arraydata=False,noiseless=False,som_cutouts=False): 
-    """the main bulk of the search algorithm.
-    inputs:
-    - :table: lightcurve table containing time, flux, quality, and flux error (needs to only be these four columns)
-    - :f_path: path to file.
-    - :lc_info: metadata about the lightcurve. Default is None.
-    - :method: Choice of smoothing method for lightcurves. Default is None.
-    - :make_plots: Create gridspec-based visualisation. Contents include plots of the lightcurve (pre and post-cleaning), the T-statistic of the lightcurve, its position on the SNR/alpha distribution and a zoomed-in transit of potential candidates. 
-    - The lightcurve/table needs to be in the format of time, flux, quality, flux error.
+def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_plots=False,save=False,twostep=False,noiseless=False): 
     """
+    
+    Function: The main bulk of the search algorithm.
+
+    Inputs:
+    :table: Lightcurve table containing time, flux, quality, and flux error (needs to only be these four columns).
+    :f_path: Path to file. Default is '.'
+    :lc_info: Metadata about the lightcurve, usually obtained from `import_lightcurve` or `import_XRPlightcurve`. Default is None.
+    :method: Choice of smoothing method for lightcurves. Default is None.
+    :som_cutouts: Create SOM (self-organizing map) cutouts of the lightcurve. Default is False.
+    :make_plots: Creating plots of lightcurve (pre and post-cleaning), the T-statistic of the lightcurve, its position on the SNR/alpha distribution, 
+      and a zoomed-in cut for potential candidates.
+    :save: Save the plots. Default is False.
+    :twostep: Perform two-step smoothing (compatible with Fourier/Lomb-Scargle methods only). Default is False.
+    :noiseless: Process the lightcurve without noise. Default is False.
+
+    Returns:
+    :result_str: A string containing the result of the search algorithm.
+    :[t, flux, quality]: A list containing the processed lightcurve data as arryys
+
+    Note: The lightcurve/table needs to be in the format of time, flux, quality, flux error.
+    """
+
+
+
+
     file_basename = os.path.basename(f_path)
     try:
         obj_id = lc_info[0]
@@ -813,7 +951,7 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
                     asym,width1,width2,
                     minT_duration,depth, peak_power, M_stat, skewness, skewness_error, m,n, chisq]])+\
                 ' '+s
-        
+        results = result_str.split()
         if make_plots:
             #diagnostic_plots(result_str,method,table,lc_info,info)
             plt.rc('font', family='serif')
@@ -958,14 +1096,18 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
         result_str = file_basename+' 0 0 0 0 0 0 0 0 notEnoughData'
 
     if som_cutouts:
-        data_to_cut = pd.DataFrame(data=[[t, flux, quality, flux_error]].T)
+        data_to_cut = pd.DataFrame(data=[t, flux, quality, flux_error]).T
         data_to_cut.columns = ['time','flux','quality','flux_err']
-        som_lightcurve = create_som_cutout(data_to_cut,half_cutout_length=120)
+        som_lightcurve = som_utils.create_som_cutout(data_to_cut,min_T=float(results[4]),half_cutout_length=120) # I think minT and the results are basically the same, but for consistency using the one from result_str
         try:
-            np.savez('{obj_id}.npz',time=som_lightcurve.TIME,flux=som_lightcurve.PDCSAP_FLUX,quality=som_lightcurve.QUALITY,flux_err=som_lightcurve.PDCSAP_FLUX_ERR)
+            os.makedirs('som_cutouts/')
+        except FileExistsError:
+            pass
+        try:
+            np.savez(f'som_cutouts/{obj_id}.npz',time=som_lightcurve.time,flux=som_lightcurve.flux,quality=som_lightcurve.quality,flux_err=som_lightcurve.flux_err)
         except TypeError:
             obj_id = input("object id: ")
-            np.savez(f'{obj_id}.npz',time=som_lightcurve.TIME,flux=som_lightcurve.PDCSAP_FLUX,quality=som_lightcurve.QUALITY,flux_err=som_lightcurve.PDCSAP_FLUX_ERR)
+            np.savez(f'som_cutouts/{obj_id}.npz',time=som_lightcurve.time,flux=som_lightcurve.flux,quality=som_lightcurve.quality,flux_err=som_lightcurve.flux_err)
             print(f"saved as {obj_id}.npz")
 
     if method == None:
@@ -973,30 +1115,23 @@ def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,save=F
     else:
         return result_str, [t, flux, normalise_flux(trend_flux), quality]
 
-
-
-
 def folders_in(path_to_parent):
-    """Identifies if directory is the lowest directory"""
+    """""
+    Yields the paths of subdirectories within a given directory.
+
+    Args:
+        path_to_parent (str): The path to the parent directory.
+    
+    Yields:
+        str: The path of a subdirectory within the parent directory.
+    
+    Raises:
+        OSError: If an error occurs while accessing the directory."""
+
+
     try:
         for fname in os.listdir(path_to_parent):
             if os.path.isdir(os.path.join(path_to_parent,fname)):
                 yield os.path.join(path_to_parent,fname)
     except:
         pass
-
-def create_som_cutout(table, half_cutout_length=120):
-    """creates cutout of lightcurve to prepare for SOM. The SOM requires all lightcurves to be the same length.
-
-    inputs:
-    :table: lightcurve data
-    :half_cutout_length: the size of half the window desired in number of cadences eg: 120 cadences corresponds to 2.5 days wide, therefore the full window is 5 days long.
-
-    returns:
-    :cutout: a sliced lightcurve centred on the depth from the model fitting
-    """
-
-    if not isinstance(table, pd.DataFrame):
-        table = table.to_pandas()
-    som_cutout = table[table.iloc[(table['time']-time).abs().argsort()[:1]]['time'].index[0] - half_cutout_length: table.iloc[(table['time']-time).abs().argsort()[:1]]['time'].index[0] + half_cutout_length]
-    return som_cutout
