@@ -1,15 +1,8 @@
-<<<<<<< HEAD
 Code for automated detection of exocomets in light curves.
 
-## Installation
-=======
 **Note: This work has been mainly developed with focus on the internal lightcurves in the collaboration. However, they should still be compatible with lightcurves obtained via MAST or `lightkurve`.**
 
-Code for automated detection of exocomets in light curves.
-
 # Installation
->>>>>>> wp3_injection_testing
-
 Latest tested in Python 3.7
 	
 	git clone https://github.com/azibn/automated_exocomet_hunt
@@ -26,7 +19,6 @@ Alternatively, you can try this:
  
 Different package versions may cause conflicts, so it is recommended to run this code using the virtual environment setup placed above. 
 
-<<<<<<< HEAD
 ## Usage
 
 These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves
@@ -50,7 +42,6 @@ TESS SPOC lightcurves can also be obtained from [MAST](https://archive.stsci.edu
 `batch_analyse.py` runs on directories of files, outputting results to a text file with one row per file. `archive_analyse.sh` is a bash script for processing compressed archives of light curve files, extracting them temporarily to a directory.  Both these scripts have multiple options (number of threads, output file location ...), run with help flag (`-h`) for more details.
 
 ## Code Style
-=======
 ### Don't forget about mamba!
 
 Mamba is the conda package manager reimplemented in C++ for faster outputs. One can do
@@ -62,8 +53,6 @@ to the base environment and then
 ```mamba env create -f environment.yml```
 
 `conda` commands will also work with mamba, eg: `conda activate <env>`.
-
-# Usage
 
 ## `batch_analyse.py`
 
@@ -87,12 +76,13 @@ This script runs an injection test on a user-specified (default 100000) number o
 
 **Note: This is currently only for the `.pkl` files. I have not yet made it compatible with other file types.**
 
+
 ## Integration with `lightkurve`
 
 The functions should work with lightcurves obtained from the `lightkurve` package. However, the main function of the search, `processing`, requires the data to be in the format of `time`, `flux`, `quality`, `flux error` in either a `astropy.Table` or `pandas.DataFrame` format right now, so make sure to have this format if you are looking to process the lightcurve.
 
-# Code Style
->>>>>>> wp3_injection_testing
+
+## Code Style
 Code style in `.py` scripts is formatted with [Black Python Formatter](https://black.readthedocs.io/en/stable/index.html) and must be standardised with Black before pushing to the repository. Black formatting checks run as part of the Git workflow. It is responsibility of the user to format their code before pushing to repo.
 
 To format your files, enter shell and run:
@@ -105,19 +95,13 @@ or
 
 to format contents of the entire directory.
 
-<<<<<<< HEAD
+
 ## Docker
-=======
-# Docker
->>>>>>> wp3_injection_testing
 
 Progress on this pipeline has been made to integrate it with Docker if the setup fails for whatever reason, or if you are just a Docker enthusiast. If you are not familiar with Docker, [this page](https://www.docker.com/resources/what-container) is a good starting point. But you don't really need to know how it works to use it! This is still in development, as we're still working out the system requirements etc, so if there are any issues do get in touch. 
 
 ### Requirements
 - Docker Desktop 
 - 64-bit CPU
-<<<<<<< HEAD
 - 8GB RAM
-=======
-- 8GB RAM
->>>>>>> wp3_injection_testing
+
