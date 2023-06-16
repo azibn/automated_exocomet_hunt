@@ -2,7 +2,7 @@ Code for automated detection of exocomets in light curves.
 
 **Note: This work has been mainly developed with focus on the internal lightcurves in the collaboration. However, they should still be compatible with lightcurves obtained via MAST or `lightkurve`.**
 
-# Installation
+## Installation
 Latest tested in Python 3.7
 	
 	git clone https://github.com/azibn/automated_exocomet_hunt
