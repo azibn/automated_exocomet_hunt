@@ -1,7 +1,13 @@
-FROM continuumio/miniconda3:4.8.2
+FROM ubuntu
+#You can start with any base Docker Image that works for you
 
-MAINTAINER Azib Norazman
+RUN echo "#!/bin/bash\n" > /startscript.sh
+RUN echo "mkdir github\n" >> /startscript.sh
+RUN echo "cd github\n" >> /startscript.sh
+RUN echo "git clone \$github\n" >> /startscript.sh
+RUN echo "cd *\n" >> /startscript.sh
+RUN echo "make dockertest\n" >> /startscript.sh
 
-# Environment setup
-COPY environment.yml /
-RUN conda env create -f environment.yml
+RUN chmod +x /startscript.sh
+
+CMD /startscript.sh
