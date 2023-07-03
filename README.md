@@ -19,6 +19,10 @@ Alternatively, you can try this:
  
 Different package versions may cause conflicts, so it is recommended to run this code using the virtual environment setup placed above. 
 
+### PyMVPA
+
+This code makes the use of [PyMVA](http://www.pymvpa.org/) for the Self-Organising Maps section. Installation instructions are on the webpage.
+
 ## Usage
 
 These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves

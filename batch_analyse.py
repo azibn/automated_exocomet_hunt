@@ -60,7 +60,7 @@ parser.add_argument("-nice", help="set niceness", dest="nice", default=8, type=i
 
 parser.add_argument(
     "-return_arraydata",
-    help="save cleaned data arrays as .npz file",
+    help="save the full processed lightcurve as an .npz file",
     dest="return_arraydata",
     action="store_true",
 )
@@ -79,6 +79,8 @@ parser.add_argument(
     help="drop bad quality data. To keep bad quality data, call this argument. Default is True",
     action="store_false",
 )
+
+parser.add_argument('-prep_som', help='extract lightcurves cutouts for SOM clustering. Default is False.', action='store_true',dest='som')
 
 # Get directories from command line arguments.
 args = parser.parse_args()
@@ -104,6 +106,22 @@ lock = m.Lock()
 
 
 def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arraydata):
+    """
+    Function: Processes the lightcurves
+    
+    Args:
+        f_path (str): Path to the lightcurve file.
+        get_metadata (bool, optional): Flag indicating whether to retrieve metadata. Defaults to args.metadata.
+        return_arraydata (bool, optional): Flag indicating whether to return array data. Defaults to args.return_arraydata.
+
+    Raises:
+        KeyboardInterrupt: Raised when the process is terminated early.
+        SystemExit: Raised when the process is terminated by a system exit.
+
+   Lightcurve results are saved in `output_log/{file.txt}`, unless specified with the no save argument `-n`.
+    
+    """
+    
     try:
         f = os.path.basename(f_path)
         print(f_path)
@@ -117,7 +135,7 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
             table, lc_info = import_lightcurve(f_path, flux=args.f)
             table = table["TIME", args.f, "QUALITY","PDCSAP_FLUX_ERR"]
         result_str, save_data = processing(
-            table, f_path, lc_info, method=args.m, make_plots=args.p, twostep=args.step
+            table, f_path, lc_info, method=args.m, make_plots=args.p, twostep=args.step, som_cutouts=args.som
         )
 
         try:

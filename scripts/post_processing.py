@@ -20,7 +20,8 @@ def get_output(file_path):
         df = pd.read_csv(file_path, sep=" ", header=None)
 
     cols = [
-        "file",
+        "path",
+        "id",
         "signal",
         "snr",
         "time",
@@ -32,10 +33,12 @@ def get_output(file_path):
         "peak_lspower",
         "mstat",
         "skewness",
-        "skewness_error",
-        "noise_estimate",
+        "skewness_err",
+        "m",
+        "n",
+        "chisquare",
         "transit_prob",
-    ]
+        ]
     df.columns = cols
     return df
 

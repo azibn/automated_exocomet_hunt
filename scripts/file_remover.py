@@ -1,7 +1,8 @@
 import os 
+import sys
 import argparse
 import glob
-from scripts.analysis_tools_cython import import_XRPlightcurve
+from analysis_tools_cython import import_XRPlightcurve
 import multiprocessing
 
 parser = argparse.ArgumentParser(description='A script to delete files that are fainter than our cutoff magnitude in the 2_min_cadences_folder')

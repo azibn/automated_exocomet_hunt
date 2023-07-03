@@ -20,6 +20,10 @@ umap_projections/
 mastDownload/
 injection_recovery_*
 test_lightcurves/
+som_cutouts*
+
+# scripts
+scripts/selfsom.py ### Dave's code
 
 # poster
 poster/
