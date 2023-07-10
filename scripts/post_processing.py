@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import glob
 import os
-from scripts.analysis_tools_cython import *
+from analysis_tools_cython import *
 
 
 def get_output(file_path):
