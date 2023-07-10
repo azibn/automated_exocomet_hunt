@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # First have to disable inbuilt multithreading for performance reasons.
+## Change directory of batch analyse to one above, so that outputs can be put in above dir and not in `scripts`.
 import os
+os.chdir('../')
 import multiprocessing
 import sys
 import traceback
@@ -139,7 +141,7 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
         )
 
         try:
-            os.makedirs("output_log")
+            os.makedirs("../output_log")
             # os.makedirs("lc_metadata")
         except FileExistsError:
             pass
@@ -183,7 +185,7 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
         lc_info = " ".join([str(i) for i in lc_info])
 
         lock.acquire()
-        with open(os.path.join("output_log/", args.of), "a") as out_file:
+        with open(os.path.join("../output_log/", args.of), "a") as out_file:
             out_file.write(result_str + "\n")
         if get_metadata:
             with open(
