@@ -650,6 +650,10 @@ def calc_shape(m,n,time,flux,quality,flux_error,n_m_bg_start=3,n_m_bg_scale_fact
         t0 = time[n]
         diffs = np.diff(t)
 
+        for i,diff in enumerate(diffs):
+            if diff > 0.5 and abs(t0-t[i])<2:
+                return -5,-5,-5
+
         x = flux[cutout_before:cutout_after]
         q = quality[cutout_before:cutout_after]
         fe = flux_error[cutout_before:cutout_after]
