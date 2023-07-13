@@ -15,7 +15,7 @@ import matplotlib.patches as patches
 import matplotlib.gridspec as gs
 import matplotlib as mpl
 mpl.rcParams['agg.path.chunksize'] = 10000
-from scripts.post_processing import *
+from post_processing import *
 from wotan import flatten
 from statistics import median,mean
 from scipy.stats import skewnorm, chisquare
@@ -27,7 +27,7 @@ import sys,os
 import kplr
 import data
 import warnings
-import scripts.som_utils as som_utils
+import som_utils as som_utils
 warnings.filterwarnings("ignore")
 
 
@@ -649,7 +649,7 @@ def calc_shape(m,n,time,flux,quality,flux_error,n_m_bg_start=3,n_m_bg_scale_fact
             return -4,-4,-4,-4,-4,-4,-4
         t0 = time[n]
         diffs = np.diff(t)
-
+        ### if a transit is less than 0.5 days within 2 days before or after transit centre, remove.
         for i,diff in enumerate(diffs):
             if diff > 0.5 and abs(t0-t[i])<2:
                 return -5,-5,-5

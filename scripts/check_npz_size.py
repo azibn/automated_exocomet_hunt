@@ -3,22 +3,24 @@ import glob
 
 ####### Quick check to see if all SOM extracted lightcurves have the same size #######
 
+
 def check_array_lengths():
     for filename in os.listdir("../som_cutouts/"):
         file = np.load(os.path.join("../som_cutouts/", filename))
-        print(f"length time {filename}", len(file['time']))
+        print(f"length time {filename}", len(file["time"]))
+
 
 def check_npz_array_sizes(file_paths):
     # Load the first .npz file to get the array size
     with np.load(file_paths[0]) as data:
-        first_array = data['time']
+        first_array = data["flux"]
         first_array_size = first_array.shape
         first_array_length = len(first_array)
 
     # Iterate through the remaining .npz files
     for file_path in file_paths[1:]:
         with np.load(file_path) as data:
-            current_array = data['flux']
+            current_array = data["flux"]
             current_array_size = current_array.shape
             current_array_length = len(current_array)
 
@@ -32,11 +34,12 @@ def check_npz_array_sizes(file_paths):
 
     return True, first_array_length
 
+
 # Directory containing the .npz files
-directory = '../automated_exocomet_hunt/som_cutouts/'
+directory = "../som_cutouts_s6/"
 
 # Get a list of all .npz files in the directory
-file_paths = glob.glob(directory + '*.npz')
+file_paths = glob.glob(directory + "*.npz")
 # Check if all the .npz files have the same array size
 same_array_size, array_length = check_npz_array_sizes(file_paths)
 

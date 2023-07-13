@@ -8,7 +8,7 @@ import argparse
 import glob
 import warnings
 import numpy as np
-from scripts.analysis_tools_cython import (
+from analysis_tools_cython import (
     import_XRPlightcurve,
     import_lightcurve,
     processing,
