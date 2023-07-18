@@ -102,10 +102,18 @@ to format contents of the entire directory.
 
 ## Docker
 
-Progress on this pipeline has been made to integrate it with Docker if the setup fails for whatever reason, or if you are just a Docker enthusiast. If you are not familiar with Docker, [this page](https://www.docker.com/resources/what-container) is a good starting point. But you don't really need to know how it works to use it! This is still in development, as we're still working out the system requirements etc, so if there are any issues do get in touch. 
+This pipeline has been developed with Mac OS mainly, but who knows when you might need to run it on a Windows/who-knows-what OS. Therefore, we make this repository also available with Docker.
+
+If you are not familiar with Docker, [this page](https://www.docker.com/resources/what-container) is a good starting point. But you don't really need to know how it works to use it! This is still in development, as we're still working out the details, so if there are any issues do get in touch. 
 
 ### Requirements
 - Docker Desktop 
 - 64-bit CPU
 - 8GB RAM
 
+### Usage
+- `docker build . -t <name you want the container to be>` to build the container.
+- `docker compose run <name of containter> /bin/bash` to run the container into terminal. 
+
+#### Exiting
+To exit the container, simply type `exit` in terminal. 
