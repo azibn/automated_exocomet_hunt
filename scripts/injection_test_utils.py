@@ -1,4 +1,4 @@
-from scripts.analysis_tools_cython import comet_curve
+from analysis_tools_cython import comet_curve
 
 
 def inject_lightcurve(flux, time, depth, injected_time):

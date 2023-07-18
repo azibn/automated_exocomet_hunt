@@ -15,7 +15,7 @@ import matplotlib.patches as patches
 import matplotlib.gridspec as gs
 import matplotlib as mpl
 mpl.rcParams['agg.path.chunksize'] = 10000
-from scripts.post_processing import *
+from post_processing import *
 from wotan import flatten
 from statistics import median,mean
 from scipy.stats import skewnorm, chisquare
@@ -27,7 +27,11 @@ import sys,os
 import kplr
 import data
 import warnings
-import scripts.som_utils as som_utils
+<<<<<<< Updated upstream
+import som_utils as som_utils
+=======
+from som_utils import *
+>>>>>>> Stashed changes
 warnings.filterwarnings("ignore")
 
 
@@ -554,7 +558,7 @@ def skewed_gaussian_curve_fit(x, y, y_err):
     i = np.argmin(y)
 
     ### params initialisation for skewness, time, mean and sigma
-    params_init = [0.01, x[i], 0.1, 0.0001]  # i find these good to initialise with
+    params_init = [0.1,x[i],0.1,0.0001]  # i find these good to initialise with
 
     # params_bounds = [[0,x[0],0,-np.inf], [np.inf,x[-1],np.inf,np.inf]]
     params, cov = curve_fit(
@@ -649,6 +653,14 @@ def calc_shape(m,n,time,flux,quality,flux_error,n_m_bg_start=3,n_m_bg_scale_fact
             return -4,-4,-4,-4,-4,-4,-4
         t0 = time[n]
         diffs = np.diff(t)
+        ### if a transit is less than 0.5 days within 2 days before or after transit centre, remove.
+        for i,diff in enumerate(diffs):
+            if diff > 0.5 and abs(t0-t[i])<2:
+<<<<<<< Updated upstream
+                return -5,-5,-5
+=======
+                return -5,-5,-5,-5,-5,-5,-5
+>>>>>>> Stashed changes
 
         x = flux[cutout_before:cutout_after]
         q = quality[cutout_before:cutout_after]
@@ -956,7 +968,9 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             gs1 = fig.add_gridspec(9,3 ,hspace=0.4,wspace=0.2)
             ax0 = plt.subplot(gs1[0:1,:]) 
             ax0.axis('off')
-            result_str_table = ax0.table(cellText=[final_result], loc='center', colLabels=columns)
+            #if "fits" in final_result[0]:
+            #    final_result[0] = final_result[0].split('-')[0].split('0000000')[1]
+            result_str_table = ax0.table(cellText=[final_result[1:]], loc='center', colLabels=columns[1:])
             #result_str_table.scale(1.1,1)
             result_str_table.auto_set_font_size(False)
             result_str_table.set_fontsize(7)
@@ -1052,7 +1066,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
                 pass
             except AttributeError:
                 pass
-            #fig.savefig(f'plots/{obj_id}.png',dpi=300) 
+            fig.savefig(f'plots/{obj_id}.png',dpi=300) 
 
 
             #if twostep:
@@ -1062,7 +1076,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             plt.tight_layout()
 
             plt.show()
-
+            plt.close()
     else:
         result_str = file_basename+' 0 0 0 0 0 0 0 0 notEnoughData'
 
@@ -1073,13 +1087,13 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             pass
         data_to_cut = pd.DataFrame(data=[t, flux, quality, flux_error]).T
         data_to_cut.columns = ['time','flux','quality','flux_err']
-        som_lightcurve = som_utils.create_som_cutout_test(data_to_cut,min_T=float(result[4]),half_cutout_length=120) # I think minT and the results are basically the same, but for consistency using the one from result_str
+        som_lightcurve = create_som_cutout_test(data_to_cut,min_T=float(result[4]),half_cutout_length=120) # I think minT and the results are basically the same, but for consistency using the one from result_str
 
         try:
-            np.savez(f'som_cutouts/{obj_id}.npz',time=som_lightcurve.time,flux=som_lightcurve.flux)
+            np.savez(f'som_cutouts/{obj_id}.npz',time=som_lightcurve.time,flux=som_lightcurve.flux, id = obj_id)
         except TypeError:
             obj_id = input("object id: ")
-            np.savez(f'som_cutouts/{obj_id}.npz',time=som_lightcurve.time,flux=som_lightcurve.flux)
+            np.savez(f'som_cutouts/{obj_id}.npz',time=som_lightcurve.time,flux=som_lightcurve.flux, id = obj_id)
             print(f"saved as {obj_id}.npz")
 
     if method == None:

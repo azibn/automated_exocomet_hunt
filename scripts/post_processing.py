@@ -38,7 +38,7 @@ def get_output(file_path):
         "n",
         "chisquare",
         "transit_prob",
-        ]
+    ]
     df.columns = cols
     return df
 
