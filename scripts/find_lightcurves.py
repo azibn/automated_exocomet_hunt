@@ -2,14 +2,16 @@ import os
 import glob
 import argparse
 
+
 def find_file_by_id(directory, search_id):
     search_pattern = os.path.join(directory, "**", f"*{search_id}*.pkl")
     matching_files = glob.glob(search_pattern, recursive=True)
-    
+
     if matching_files:
         return matching_files
     else:
         return None
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find files by ID in a directory.")

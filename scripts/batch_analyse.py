@@ -15,6 +15,7 @@ from analysis_tools_cython import (
     processing,
     folders_in,
 )
+
 os.environ["OMP_NUM_THREADS"] = "1"
 warnings.filterwarnings("ignore")
 
@@ -82,7 +83,12 @@ parser.add_argument(
     action="store_false",
 )
 
-parser.add_argument('-prep_som', help='extract lightcurves cutouts for SOM clustering. Default is False.', action='store_true',dest='som')
+parser.add_argument(
+    "-prep_som",
+    help="extract lightcurves cutouts for SOM clustering. Default is False.",
+    action="store_true",
+    dest="som",
+)
 
 # Get directories from command line arguments.
 args = parser.parse_args()
@@ -109,21 +115,21 @@ lock = m.Lock()
 
 def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arraydata):
     """
-    Function: Processes the lightcurves
-    
-    Args:
-        f_path (str): Path to the lightcurve file.
-        get_metadata (bool, optional): Flag indicating whether to retrieve metadata. Defaults to args.metadata.
-        return_arraydata (bool, optional): Flag indicating whether to return array data. Defaults to args.return_arraydata.
+     Function: Processes the lightcurves
 
-    Raises:
-        KeyboardInterrupt: Raised when the process is terminated early.
-        SystemExit: Raised when the process is terminated by a system exit.
+     Args:
+         f_path (str): Path to the lightcurve file.
+         get_metadata (bool, optional): Flag indicating whether to retrieve metadata. Defaults to args.metadata.
+         return_arraydata (bool, optional): Flag indicating whether to return array data. Defaults to args.return_arraydata.
 
-   Lightcurve results are saved in `output_log/{file.txt}`, unless specified with the no save argument `-n`.
-    
+     Raises:
+         KeyboardInterrupt: Raised when the process is terminated early.
+         SystemExit: Raised when the process is terminated by a system exit.
+
+    Lightcurve results are saved in `output_log/{file.txt}`, unless specified with the no save argument `-n`.
+
     """
-    
+
     try:
         f = os.path.basename(f_path)
         print(f_path)
@@ -135,13 +141,19 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
 
         else:
             table, lc_info = import_lightcurve(f_path, flux=args.f)
-            table = table["TIME", args.f, "QUALITY","PDCSAP_FLUX_ERR"]
+            table = table["TIME", args.f, "QUALITY", "PDCSAP_FLUX_ERR"]
         result_str, save_data = processing(
-            table, f_path, lc_info, method=args.m, make_plots=args.p, twostep=args.step, som_cutouts=args.som
+            table,
+            f_path,
+            lc_info,
+            method=args.m,
+            make_plots=args.p,
+            twostep=args.step,
+            som_cutouts=args.som,
         )
 
         try:
-            os.makedirs('output_log')
+            os.makedirs("output_log")
         except FileExistsError:
             pass
         try:
@@ -184,7 +196,7 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
         lc_info = " ".join([str(i) for i in lc_info])
 
         lock.acquire()
-        with open(os.path.join('output_log', args.of), "a") as out_file:
+        with open(os.path.join("output_log", args.of), "a") as out_file:
             out_file.write(result_str + "\n")
         if get_metadata:
             with open(
@@ -199,7 +211,6 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
     except Exception as e:
         print("\nError with file " + f_path, file=sys.stderr)
         traceback.print_exc()
-
 
 
 if __name__ == "__main__":
@@ -229,7 +240,6 @@ if __name__ == "__main__":
 
             pool.map(run_lc, fits)
             pool.map(run_lc, pkl)
-            
 
         else:
             print("globbing subdirectories")
@@ -242,4 +252,3 @@ if __name__ == "__main__":
 
             pool.map(run_lc, fits)
             pool.map(run_lc, pkl)
-            

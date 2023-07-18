@@ -4,10 +4,12 @@ from som.TransitSOM_release import CreateSOM
 import os
 import argparse
 import warnings
+
 warnings.filterwarnings("ignore")
 import numpy as np
 import matplotlib
-matplotlib.use('TkAgg')
+
+matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import som.somtools
 
@@ -59,35 +61,38 @@ def stack_npz_files(directory):
 
 def plot_all_arrays(som, bins=np.arange(241), save=True):
     fig, axes = plt.subplots(10, 10, figsize=(50, 50))
-    fig.subplots_adjust(wspace=0.4, hspace=0.4)  # Adjust the width and height spacing between subplots
+    fig.subplots_adjust(
+        wspace=0.4, hspace=0.4
+    )  # Adjust the width and height spacing between subplots
 
     for x_pixel in range(10):
         for y_pixel in range(10):
             ax = axes[x_pixel, y_pixel]
-            ax.scatter(bins, som[x_pixel, y_pixel], c='g',s=3)
-            ax.set_title('Kohonen pixel at [{},{}]'.format(x_pixel, y_pixel))
-            #ax.text(0, 0.92, '[{},{}]'.format(x_pixel, y_pixel))
-
+            ax.scatter(bins, som[x_pixel, y_pixel], c="g", s=3)
+            ax.set_title("Kohonen pixel at [{},{}]".format(x_pixel, y_pixel))
+            # ax.text(0, 0.92, '[{},{}]'.format(x_pixel, y_pixel))
 
     if save:
-        plt.savefig('../s{}_som_pixel_by_pixel.png'.format(args.sector)) 
+        plt.savefig("../s{}_som_pixel_by_pixel.png".format(args.sector))
 
         try:
-            os.mkdir('../som_plots')
+            os.mkdir("../som_plots")
         except FileExistsError:
             pass
-        plt.savefig('pixel_by_pixel_s{}.png'.format(args.sector),dpi=400)  # Save the figure if save is True
-    
+        plt.savefig(
+            "pixel_by_pixel_s{}.png".format(args.sector), dpi=400
+        )  # Save the figure if save is True
+
     plt.show()
 
 
-print('starting')
+print("starting")
 ##########################################
 som_array, lc_ids = stack_npz_files(args.path[0])
-#lc_ids = stack_npz_files(args.path[0])[1]
+# lc_ids = stack_npz_files(args.path[0])[1]
 somshape = args.grid
 
-print('files loaded')
+print("files loaded")
 print("starting som")
 trained_data = CreateSOM(som_array, somshape=somshape, niter=args.iterations)
 print("training done")
@@ -117,7 +122,7 @@ if colour == "count":
     plt.scatter(x_pos, y_pos, c=count_list, s=count_list)
     plt.colorbar(label="# of lightcurves at pixel")
     if save:
-        plt.savefig('Kohonen_s{}.png'.format(args.sector))
+        plt.savefig("Kohonen_s{}.png".format(args.sector))
 
 
 array = trained_data.K
