@@ -3,12 +3,18 @@
 build
 .nfs*
 .vscode/
+bin/micromamba
 
 # old Kepler files
 archive_analyse.sh
 
 # Jupyter notebooks
 #notebooks/
+
+# Data files
+eb_cat.txt
+exofop_tess_tois.csv
+
 
 # Data folders
 betapic/

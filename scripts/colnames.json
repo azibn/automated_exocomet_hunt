@@ -1,0 +1,29 @@
+{
+    "column_names": [
+    "path",
+    "TIC_ID",
+    "signal",
+    "snr",
+    "time",
+    "asym_score",
+    "amplitude",
+    "width",
+    "skewness",
+    "skewness_err",
+    "duration",
+    "depth",
+    "peak_lspower",
+    "mstat",
+    "m",
+    "n",
+    "chisq_gauss",
+    "chisq_skew",
+    "rchisq_gauss",
+    "rchisq_skew",
+    "rmse_gauss",
+    "rmse_skew",
+    "mae_gauss",
+    "mae_skew",
+    "transit_prob"
+]
+  }

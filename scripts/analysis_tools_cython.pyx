@@ -1,9 +1,19 @@
 #cython: language_level=3
+
+import os
+import math
+import eleanor
+import sys
+import kplr
+import xrpdata
+import warnings
+import json
 import pandas as pd
+import numpy as np
+cimport numpy as np
 from astropy.io import fits
 from astropy.table import Table
-from astropy.stats import sigma_clip, sigma_clipped_stats
-from astropy import units as u
+from astropy.stats import sigma_clip
 from astropy.coordinates import SkyCoord
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
@@ -13,25 +23,12 @@ from matplotlib import pyplot as plt
 from matplotlib.colorbar import Colorbar
 import matplotlib.patches as patches
 import matplotlib.gridspec as gs
-import matplotlib as mpl
-mpl.rcParams['agg.path.chunksize'] = 10000
 from post_processing import *
+from stats_calcs import *
 from wotan import flatten
-from statistics import median,mean
-from scipy.stats import skewnorm, chisquare
-import numpy as np
-cimport numpy as np
-import math
-import eleanor
-import sys,os
-import kplr
-import data
-import warnings
-<<<<<<< Updated upstream
-import som_utils as som_utils
-=======
+from scipy.stats import skewnorm
 from som_utils import *
->>>>>>> Stashed changes
+plt.rcParams['agg.path.chunksize'] = 10000
 warnings.filterwarnings("ignore")
 
 
@@ -124,11 +121,11 @@ def import_XRPlightcurve(file_path,sector: int,clip=3,drop_bad_points=True,ok_fl
         table = Table.from_pandas(df)
 
     # loading Ethan Kruse bad times
-    bad_times = data.load_bad_times()
+    bad_times = xrpdata.load_bad_times()
     bad_times = bad_times - 2457000
     
     # loading MAD 
-    mad_df = data.load_mad()
+    mad_df = xrpdata.load_mad()
     sec = sector
 
     camera = lc[4]
@@ -481,6 +478,10 @@ def gauss(t,A,t0,sigma):
     return abs(A)*np.exp( -(t - t0)**2 / (2 * sigma**2) )
 
 def single_gaussian_curve_fit(x,y):
+
+    assert not (np.isnan(y).any()), "y array contains NaN" 
+    assert not (np.isinf(y).any()), "y array contains inf values" 
+
     """
     Function: Performs a curve fit to the Gaussian function given time and flux.
 
@@ -538,34 +539,49 @@ def comet_curve_fit(x,y):
     params,cov = curve_fit(comet_curve,x,y,params_init,bounds=params_bounds)
     return params, cov
 
-def skewed_gaussian(x,a,mean,sigma,m):
+def skewed_gaussian_curve_fit(x,y,y_err):
     """
-    m: amplitude
-    x: time
-    a: skewness
-    mean: time
-    sigma: sigma/standard deviation    
+    Fits a skewed Gaussian curve to the given data points.
+
+    Parameters:
+        x (array-like): time.
+        y (array-like): ligthcurve flux.
+        y_err (array-like): Associated errors for lightcurve flux.
+
+    Returns:
+        tuple: A tuple containing two elements:
+            - params (array-like): The optimized parameters of the skewed Gaussian curve fit.
+            - cov (ndarray): The estimated covariance of the optimized parameters.
+    """
     
-    """
-    return -m * skewnorm.pdf(x,a,loc=mean,scale=sigma)
-
-def skewed_gaussian_curve_fit(x, y, y_err):
-    # Initial parameters guess
-    ## i = index of min time
-    ## x = time
-    ## y = flux
-
-    i = np.argmin(y)
-
+    i = np.argmax(y)
+    width = x[-1]-x[0]
+    
     ### params initialisation for skewness, time, mean and sigma
-    params_init = [0.1,x[i],0.1,0.0001]  # i find these good to initialise with
+    # amplitude, t0, sigma, skewness
+    params_init = [y[i],x[i],width/3,1]
+    
+    params_bounds=[[0,x[0],0,-30], [np.inf,x[-1],width*3,30]]
+    params,cov = curve_fit(skewed_gaussian,x,y,p0=params_init,sigma=y_err,bounds=params_bounds,maxfev=100000)
+    
+    return params, cov 
 
-    # params_bounds = [[0,x[0],0,-np.inf], [np.inf,x[-1],np.inf,np.inf]]
-    params, cov = curve_fit(
-        skewed_gaussian, x, y, p0=params_init, sigma=y_err
-    )
-    return params, cov
+def skewed_gaussian(x, A, t0, sigma, alpha):
+    """
+    Skewed Gaussian function using the Skewed Student's t-distribution.
 
+    Parameters:
+        x: Input data points.
+        A: Amplitude of the Gaussian.
+        t0: Mean of the Gaussian.
+        sigma: Standard deviation of the Gaussian.
+        alpha: Skewness parameter (positive for right-skewed, negative for left-skewed).
+
+    Returns:
+        y: The value of the skewed Gaussian at each input data point x.
+    """
+    y = A * skewnorm.pdf(x,alpha,loc=t0, scale=sigma)
+    return y
 
 def nonzero(T):
     """Returns a 1d array of the nonzero elements of the array T"""
@@ -619,9 +635,11 @@ def classify(m,n,real,asym):
     else:
         return "maybeTransit"
 
-
-def calc_shape(m,n,time,flux,quality,flux_error,n_m_bg_start=3,n_m_bg_scale_factor=1):
+def calc_shape(m,n,time,flux,quality,flux_error,original_time,n_m_bg_start=3,n_m_bg_scale_factor=1):
     """Fit both symmetric and comet-like transit profiles and compare fit.
+
+    original time: time before interpolation step
+
     Returns:
     (1) Asymmetry: ratio of (errors squared)
     Possible errors and return values:
@@ -630,7 +648,9 @@ def calc_shape(m,n,time,flux,quality,flux_error,n_m_bg_start=3,n_m_bg_scale_fact
     -3 : Unable to fit model (e.g. timeout)
     -4 : Too much empty space in overall light curve or near dip
     (2,3) Widths of comet curve fit segments.
-    info: t, x, q, fit1 and fit2 are the transit shape elements 
+    info: t, x, q, fit1 and fit3 are the transit shape elements 
+
+    Asymmetry score, 
 
     """
     ## how many transit widths to take the general linear trend from. start is 1/4 length of cutout from beginning, end is 1 from end.
@@ -649,18 +669,16 @@ def calc_shape(m,n,time,flux,quality,flux_error,n_m_bg_start=3,n_m_bg_scale_fact
     
     if cutout_before>= 0 and cutout_after < len(time):
         t = time[cutout_before:cutout_after]
+        time_ori = original_time[cutout_before:cutout_after]
         if (t[-1]-t[0]) / np.median(np.diff(t)) / len(t) > 1.5:
-            return -4,-4,-4,-4,-4,-4,-4
+            return -4,-4,-4,-4,-4,-4,-4, -4
         t0 = time[n]
-        diffs = np.diff(t)
+        diffs = np.diff(time_ori)
+
         ### if a transit is less than 0.5 days within 2 days before or after transit centre, remove.
         for i,diff in enumerate(diffs):
-            if diff > 0.5 and abs(t0-t[i])<2:
-<<<<<<< Updated upstream
-                return -5,-5,-5
-=======
-                return -5,-5,-5,-5,-5,-5,-5
->>>>>>> Stashed changes
+            if diff > 0.5 and abs(t0-t[i])<1.5: # accounts for both sides of gap
+                return -5,-5,-5,-5,-5,-5,-5, -5
 
         x = flux[cutout_before:cutout_after]
         q = quality[cutout_before:cutout_after]
@@ -670,8 +688,7 @@ def calc_shape(m,n,time,flux,quality,flux_error,n_m_bg_start=3,n_m_bg_scale_fact
         bg_time_before = np.mean(t[:int(m/4)])
         bg_after = np.mean(x[-int(round(m/4)):])
         bg_time_after = np.mean(t[-int(round(m/4)):])
-        
-        
+
         grad = (bg_after-bg_before)/(bg_time_after-bg_time_before)
         background_level = bg_before + grad * (t - bg_time_before)
         x = x - background_level
@@ -679,27 +696,29 @@ def calc_shape(m,n,time,flux,quality,flux_error,n_m_bg_start=3,n_m_bg_scale_fact
         try:
             params1, pcov1 = single_gaussian_curve_fit(t,-x)
             #params2, pcov2 = comet_curve_fit(t,-x)
-            params3, pcov3 = skewed_gaussian_curve_fit(t,x,fe)
-           
+            params3, pcov3 = skewed_gaussian_curve_fit(t,-x,fe)
         except:
-            return -3,-3,-3,-3,-3,-3,-3
+            return -3,-3,-3,-3,-3,-3,-3, -3
 
         fit1 = -gauss(t,*params1)
         #fit2 = -comet_curve(t,*params2)
-        fit3 = skewed_gaussian(t,*params3)
-        depth = fit3.min() # depth of comet (based on minimum point; not entirely accurate, but majority of the time true)
-        min_time = t[np.argmin(x)] # time of midtransit/at minimum point
+        fit3 = -skewed_gaussian(t,*params3)
+        depth = fit3.min() # depth of comet (based on minimum point; not entirely accurate, but majority of the time true
+        #min_time = t[np.argmin(x)] # time of midtransit/at minimum point
+
         scores = [score_fit(x,fit) for fit in [fit1,fit3]] # changed for the skewed gaussian fit
         if scores[1] > 0:
-            skewness = params3[0]
-            skewness_error = np.sqrt(np.diag(pcov3)[0])
-            return scores[0]/scores[1], params3[2], params3[3], depth, [t,x,q,fe,fit1,fit3,background_level], skewness, skewness_error # fit2
+            skewness_error = np.sqrt(np.diag(pcov3)[3])
+            # params3[0] is the amplitude of the gaussian...
+            # params3[2] is the sigma/width of the gaussian...
+            # params3[3] is the skewness...
+            return scores[0]/scores[1], params3[0], params3[2], params3[3], skewness_error, depth, [t,x,q,fe,background_level], [fit1,fit3]
         else:
 
-            return -1,-1,-1,-1,-1,-1,-1
+            return -1,-1,-1,-1,-1,-1,-1, -1
     else:     
 
-        return -2,-2,-2,-2,-2,-2,-2
+        return -2,-2,-2,-2,-2,-2,-2, -2
 
 
 def d2q(d):
@@ -817,9 +836,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
     Note: The lightcurve/table needs to be in the format of time, flux, quality, flux error.
     """
 
-
-
-    original_table = table
+    original_table = table.copy()
     file_basename = os.path.basename(f_path)
     try:
         obj_id = lc_info[0]
@@ -828,10 +845,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
 
     if isinstance(table, pd.DataFrame):
         table = Table.from_pandas(table)
-    if len(table) > 120: # 120 represents 2.5 days
-
-        ## normalising errors - did not implement this as it messed up skewness calculations
-        #table[table.colnames[3]] = normalise_flux(table[table.colnames[3]]) ## generalised for lightcurves with different header names
+    if len(table) > 120: # 120 represents 2.5 days of data
         
         # smoothing operation and normalisation of flux
         ## note: since Wotan performs time-windowed smoothing without the need for interpolation, `clean_data` is placed after the smoothing step to create interpolated points at data gaps (mostly for visual benefit). 
@@ -839,12 +853,11 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
         wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
         if method in wotan_methods:
             flat_flux, trend_flux = smoothing(table, method=method)
-            table['flux'] = flat_flux - np.ones(len(flat_flux))
             a = Table()
             a['time'] = table[table.colnames[0]]
             a['flux'] = flat_flux - np.ones(len(flat_flux)) # resets normalisation to zero.
             a['quality'] = table[table.colnames[2]]
-            a['flux_error'] = table[table.colnames[3]]
+            a['flux_error'] = table[table.colnames[3]]/original_table[original_table.colnames[1]].mean()
             t, flux, quality, real, flux_error = clean_data(a)
             flux *= real
             table = a
@@ -863,120 +876,135 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             flux = normalise_flux(flux)
             flux *= real
 
+        #assert not (np.isnan(t).any() or np.isinf(t).any()), "Time array contains NaN or inf values"
+        #assert not (np.isnan(flux).any() or np.isinf(flux).any()), "Flux array contains NaN or inf values"
+
 
         ## preparing processing
         timestep = calculate_timestep(table)
         factor = ((1/48)/timestep)
         N = len(t)
-        #flux_error = normalise_error(flux_error)
         ones = np.ones(N)
 
         ## fourier and Lomb-Scargle computations
         A_mag = np.abs(np.fft.rfft(normalise_flux(flux)))
-
         freq, powers = LombScargle(t,flux).autopower() # think about that one
         peak_power = powers.max()
 
         ## M-statistic
         M_stat = calc_mstatistic(flux)
 
-        ## chi-square
-        chisq = chisquare(flux)[0] ## [1] returns the p-value
-
         ## Perform T-statistic search method
-        T1 = test_statistic_array(flux,60 * factor)
-        m, n = np.unravel_index(
-        T1.argmin(), T1.shape
-        )  # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
-        minT = T1[m, n]
-        minT_time = t[n]
-        minT_duration = m * timestep
-        Tm_start = n-math.floor((m-1)/2)
-        Tm_end = Tm_start + m
-        Tm_depth = flux[Tm_start:Tm_end].mean() 
-        Ts = nonzero(T1[m]).std() # only the box width selected. Not RMS of all T-statistic
+        m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts = run_test_statistic(flux, factor, timestep,t)
 
         # Second Lomb-Scargle
         if twostep:
-            final_flux2, periodicnoise_ls2, original_masked_flux = smoothing_twostep(t,timestep,real,flux,m,n)
-            final_flux = final_flux2
-            del final_flux2
-            T2 = test_statistic_array(final_flux, 60 * factor)
+            final_flux2, periodicnoise_ls2, original_masked_flux = smoothing_twostep(t,timestep,real,flux,m,n)  
+            m,n,T2,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts = run_test_statistic(final_flux2, factor, timestep,t)
+
+
+        asym, amplitude, width, skewness, skewness_error, depth, info, fits = calc_shape(m,n,t,flux,quality,flux_error,original_time=original_table.columns[0].data)
+
+        ### preparing some variables for statistics ###
+        try:
+            gauss_fit = fits[0]
+            skewed_fit = fits[1]
+    
+        except:
+            pass
+  
+        try:
+            cutout_flux = info[1] # check why this raises errors sometimes
+            cutout_flux_error = info[3]
+
+
+            ### chi square for the two models ###
+            chisq_fit1 = chisquare(cutout_flux,gauss_fit,cutout_flux_error)
+            chisq_fit3 = chisquare(cutout_flux,skewed_fit,cutout_flux_error)
+
+            ### reduced chi square for the two models ### 
+            reduced_chisq_fit1 = reduced_chisquare(cutout_flux,gauss_fit,4,cutout_flux_error)
+            reduced_chisq_fit3 = reduced_chisquare(cutout_flux,skewed_fit,4,cutout_flux_error)
             
+            ### rmse and mae for both models ###
+            rmse_fit1 = rmse(cutout_flux,gauss_fit)
+            mae_fit1 = mae(cutout_flux,gauss_fit)
 
-            m, n = np.unravel_index(T2.argmin(), T2.shape)
+            rmse_fit3 = rmse(cutout_flux,skewed_fit)
+            mae_fit3 = mae(cutout_flux,skewed_fit)
+        except:
+            cutout_flux = None # check why this raises errors sometimes
+            cutout_flux_error = None
 
-            minT = T2[m,n]
-            minT_time = t[n]
-            minT_duration = m*timestep
-            Tm_start = n-math.floor((m-1)/2)
-            Tm_end = Tm_start + m
-            Tm_depth = flux[Tm_start:Tm_end].mean() 
-            Ts = nonzero(T2[m]).std()
 
-        asym, width1, width2, depth, info, skewness, skewness_error = calc_shape(m,n,t,flux,quality,flux_error)
-        s = classify(m,n,real,asym)
 
-        result_str =\
+        ### sorting out the lightcurves into the initial groups ### 
+        classification = classify(m,n,real,asym)
+
+        try:
+            search =\
                 f_path+' '+str(obj_id) + ' '+\
-                ' '.join([str(round(a,8)) for a in
+                ' '.join([str(round(a,5)) for a in
                     [minT, minT/Ts, minT_time,
-                    asym,width1,width2,
-                    minT_duration,depth, peak_power, M_stat, skewness, skewness_error, m,n, chisq]])+\
-                ' '+s
+                    asym,amplitude,width, skewness, skewness_error,
+                    minT_duration,depth, peak_power, M_stat, m,n, chisq_fit1, chisq_fit3,
+                    reduced_chisq_fit1, reduced_chisq_fit3, rmse_fit1, rmse_fit3, mae_fit1, mae_fit3]])+\
+                ' '+classification
+
+        except NameError:
+            chisq_fit1 = chisq_fit3 = reduced_chisq_fit1 = reduced_chisq_fit3 = rmse_fit1 = rmse_fit3 = mae_fit1 = mae_fit3 = 0.0
+            search =\
+                f_path+' '+str(obj_id) + ' '+\
+                ' '.join([str(round(a,6)) for a in
+                    [minT, minT/Ts, minT_time,
+                    asym,amplitude,width, skewness, skewness_error,
+                    minT_duration,depth, peak_power, M_stat, m,n, chisq_fit1, chisq_fit3,
+                    reduced_chisq_fit1, reduced_chisq_fit3, rmse_fit1, rmse_fit3, mae_fit1, mae_fit3]])+\
+                ' '+classification
         
         ## little fix for string splitting between SPOC lightcurves and XRP ones
-        result = result_str.split()
+        result = search.split()
+        midtransit_time = float(result[4])
 
-        if 'TIC' in result_str:
+        if 'TIC' in search:
             final_result = [result[i] + ' ' + result[i+1] if result[i] == 'TIC' else result[i] for i in range(len(result)) if i+1 < len(result)]
         else:
-            final_result = [s for s in result_str.split() if s != 'TIC']
+            final_result = [s for s in search.split() if s != 'TIC']
 
         if make_plots:
-            #diagnostic_plots(result_str,method,table,lc_info,info)
             plt.rc('font', family='serif')
         
             try:
                 os.makedirs("plots") # make directory plot if it doesn't exist
             except FileExistsError:
                 pass
-            columns = [
-                "path",
-                "TIC_ID",
-                "signal",
-                "snr",
-                "time",
-                "asym_score",
-                "width1",
-                "width2",
-                "duration",
-                "depth",
-                "peak_lspower",
-                "mstat",
-                "skewness",
-                "skewness_err",
-                "m",
-                "n",
-                "chisquare",
-                "transit_prob",
-            ]
-
+            
+            ### column names ###
+            with open('colnames.json', 'r', encoding='utf-8') as f:
+                check = f.read()
+                columns = json.loads(check)
+                columns = columns['column_names']
+            
             fig = plt.figure(figsize=(20,10)) ## change at top to plt.rcParams["figure.figsize"] = (10,6)
 
-            ## table of stats
-            gs1 = fig.add_gridspec(9,3 ,hspace=0.4,wspace=0.2)
+            ### table of results ###
+            gs1 = fig.add_gridspec(10,3 ,hspace=0.4,wspace=0.2)
             ax0 = plt.subplot(gs1[0:1,:]) 
             ax0.axis('off')
-            #if "fits" in final_result[0]:
-            #    final_result[0] = final_result[0].split('-')[0].split('0000000')[1]
-            result_str_table = ax0.table(cellText=[final_result[1:]], loc='center', colLabels=columns[1:])
-            #result_str_table.scale(1.1,1)
-            result_str_table.auto_set_font_size(False)
-            result_str_table.set_fontsize(7)
 
-            ###### flux and the smoothing function overlayed #######
-            ax1 = plt.subplot(gs1[1:4,:2]) 
+            search = ax0.table(cellText=[final_result[1:13]], loc='center', colLabels=columns[1:13])
+            search.auto_set_font_size(False)
+            search.set_fontsize(10)
+            ax00 = plt.subplot(gs1[1:2,:]) 
+            ax0.axis('off')
+            search2 = ax00.table(cellText=[final_result[12:]], loc='center', colLabels=columns[12:])
+            search2.auto_set_font_size(False)
+            search2.set_fontsize(10)
+            ax00.axis('off')
+
+
+            ### flux and the smoothing function ###
+            ax1 = plt.subplot(gs1[2:5,:2]) 
             ax1.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[original_table.colnames[1]]), s=10,alpha=0.5,zorder=1,label='original lightcurve')
             ax1.scatter(t, flux,s=10,label='smoothened flux',alpha=0.9,zorder=3)
             try:
@@ -984,41 +1012,41 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             except:
                 pass
 
-            #if method != None:
-            #    ax1.plot(table[table.colnames[0]], normalise_flux(trend_flux),color='orange', label="Trend") # trend flux
             ax1.set_xlim(np.min(t),np.max(t))
-            #ax1.title.set_text("Lightcurve and the Smoothing filter")
             ax1.set_ylabel("Normalised flux")
             ax1.legend(loc="lower left")
             plt.setp(ax1.get_xticklabels(), visible=False)
 
-            ## transit cutout
-            ax2 = plt.subplot(gs1[1:5,2:]) 
+            ### transit cutout ###
+            ax2 = plt.subplot(gs1[2:6,2:]) 
             try:
-                skew_fit = info[-2]
-                t2, x2, y2, w2 = info[0],info[1],info[4],info[5]
-                
-                ax2.plot(t2, x2,label='data') # flux
-                ax2.plot(t2,y2,label='gaussian model') # gauss fit
-                ax2.plot(t2,skew_fit,label='skewed gauss model',color='black') # skewed gaussian
+                gauss_fit = fits[0]
+                skew_fit = fits[1]
+                cutout_t = info[0]
+                cutout_x = info[1]
+                    
+                ax2.plot(cutout_t, cutout_x,label='data') # flux
+                ax2.plot(cutout_t,gauss_fit,label='gaussian model') # gauss fit
+                ax2.plot(cutout_t,skew_fit,label='skewed gauss model',color='black') # skewed gaussian
                 ax2.set_xlabel("Time - 2457000 (BTJD Days)")
                 ax2.legend(loc="lower left")
             except:
                 pass
 
             ###### T-statistic #######
-            ax3 = plt.subplot(gs1[4:7,:2])
+            ax3 = plt.subplot(gs1[5:8, :2])
             im = ax3.imshow(
                 T1,
                 origin="bottom",
                 extent=ax1.get_xlim() + (0, 2.5),
                 aspect="auto",
-                cmap="rainbow"
+                cmap="rainbow",
             )
             ax3.set_xlabel("Time - 2457000 (BTJD Days)")
-            ax3.set_ylabel("Transit width in days")
-            cbax = plt.subplot(gs1[7:8,:2]) # Place it where it should be.
-            cb = Colorbar(ax = cbax, mappable = im, orientation = 'horizontal', ticklocation = 'bottom')#.set_x(-0.075)
+            ax3.set_ylabel("Transit width in days") 
+
+            cbax = plt.subplot(gs1[8:9, :2])
+            cb = Colorbar(ax=cbax, mappable=im, orientation='horizontal', ticklocation='bottom')#et_x(-0.075)
             try:
                 obj_id = lc_info[0]
             except:
@@ -1049,11 +1077,11 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             #ax7 = plt.subplot(gs1[16:,3:])
             #ax7.set_title("HR Diagram")
 
-
+            ### finding information from simbad ###
             customSimbad = Simbad()
             customSimbad.add_votable_fields("sptype","parallax")
 
-            obj_id = "TIC" + str(obj_id)#
+            obj_id = "TIC" + str(obj_id)
 
             try:
                 obj = customSimbad.query_object(obj_id).to_pandas().T
@@ -1069,16 +1097,12 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             fig.savefig(f'plots/{obj_id}.png',dpi=300) 
 
 
-            #if twostep:
-            #    fig.savefig(f'plots/{obj_id}_twostep_{method}.png',dpi=300)  
-            #else:
-            #    fig.savefig(f'plots/{obj_id}_twostep_{method}.png',dpi=300)  
             plt.tight_layout()
 
             plt.show()
             plt.close()
     else:
-        result_str = file_basename+' 0 0 0 0 0 0 0 0 notEnoughData'
+        search = file_basename+' 0 0 0 0 0 0 0 0 notEnoughData'
 
     if som_cutouts:
         try:
@@ -1087,7 +1111,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             pass
         data_to_cut = pd.DataFrame(data=[t, flux, quality, flux_error]).T
         data_to_cut.columns = ['time','flux','quality','flux_err']
-        som_lightcurve = create_som_cutout_test(data_to_cut,min_T=float(result[4]),half_cutout_length=120) # I think minT and the results are basically the same, but for consistency using the one from result_str
+        som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=120) 
 
         try:
             np.savez(f'som_cutouts/{obj_id}.npz',time=som_lightcurve.time,flux=som_lightcurve.flux, id = obj_id)
@@ -1095,11 +1119,12 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             obj_id = input("object id: ")
             np.savez(f'som_cutouts/{obj_id}.npz',time=som_lightcurve.time,flux=som_lightcurve.flux, id = obj_id)
             print(f"saved as {obj_id}.npz")
-
+            
+        del original_table
     if method == None:
-        return result_str, [t, flux, quality]
+        return search, [t, flux, quality]
     else:
-        return result_str, [t, flux, normalise_flux(trend_flux), quality]
+        return search, [t, flux, normalise_flux(trend_flux), quality]
 
 
 def folders_in(path_to_parent):
@@ -1115,10 +1140,24 @@ def folders_in(path_to_parent):
     Raises:
         OSError: If an error occurs while accessing the directory."""
 
-
     try:
         for fname in os.listdir(path_to_parent):
             if os.path.isdir(os.path.join(path_to_parent,fname)):
                 yield os.path.join(path_to_parent,fname)
     except:
         pass
+
+def run_test_statistic(flux, factor, timestep, t):
+        T1 = test_statistic_array(flux,60 * factor)
+        m, n = np.unravel_index(
+        T1.argmin(), T1.shape
+        )  # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
+        minT = T1[m, n] # snr
+        minT_time = t[n] # time
+        minT_duration = m * timestep
+        Tm_start = n-math.floor((m-1)/2)
+        Tm_end = Tm_start + m
+        Tm_depth = flux[Tm_start:Tm_end].mean() 
+        Ts = nonzero(T1[m]).std() # only the box width selected. Not RMS of all T-statistic
+        
+        return m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts

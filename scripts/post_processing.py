@@ -1,11 +1,12 @@
 import pandas as pd
 import numpy as np
 import glob
+import json
 import os
 from analysis_tools_cython import *
 
 
-def get_output(file_path):
+def get_output(file_path, include_stats=True):
     """Imports batch_analyse output file as pandas dataframe.
 
     file_path: ouptut file (.txt format)
@@ -19,27 +20,13 @@ def get_output(file_path):
     elif file_path.endswith(".txt"):
         df = pd.read_csv(file_path, sep=" ", header=None)
 
-    cols = [
-        "path",
-        "id",
-        "signal",
-        "snr",
-        "time",
-        "asym_score",
-        "width1",
-        "width2",
-        "duration",
-        "depth",
-        "peak_lspower",
-        "mstat",
-        "skewness",
-        "skewness_err",
-        "m",
-        "n",
-        "chisquare",
-        "transit_prob",
-    ]
-    df.columns = cols
+               ### column names ###
+    with open('colnames.json', 'r', encoding='utf-8') as f:
+        check = f.read()
+        columns = json.loads(check)
+        columns = columns['column_names']
+    df.columns = columns
+
     return df
 
 

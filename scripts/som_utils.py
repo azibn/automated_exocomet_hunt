@@ -64,10 +64,6 @@ def create_som_cutout_test(table, min_T: float, half_cutout_length=120):
         # Interpolate the existing data
         interpolator = interp1d(time_values, table.values.T, fill_value="extrapolate")
         cadence_duration = time_values[1] - time_values[0]
-<<<<<<< Updated upstream
-        print(cadence_duration)
-=======
->>>>>>> Stashed changes
         # Generate the extrapolated time values
         extrapolated_times = np.linspace(
             min_time - half_cutout_length * cadence_duration,
