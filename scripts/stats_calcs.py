@@ -2,6 +2,7 @@ import numpy as np
 
 ###A set of statistics equations for use in the analysis of transit signals. Made into separate script to neaten up some code###.
 
+
 def rmse(flux, fit):
     """
     Calculate the Root Mean Squared Error (RMSE) for a given lightcurve and model fit.
@@ -32,7 +33,6 @@ def rmse(flux, fit):
     return np.sqrt(mean_squared_diff)
 
 
-
 def mae(flux, fit):
     """
     Calculate the Mean Absolute Error (MAE) for a given lightcurve and model fit.
@@ -59,7 +59,8 @@ def mae(flux, fit):
     # Calculate the mean absolute difference
     return np.mean(absolute_diff)
 
-def chisquare(flux, fit,flux_err):
+
+def chisquare(flux, fit, flux_err):
     """Returns the chi-squared value of the fit to the flux.
 
     Args:
@@ -72,12 +73,13 @@ def chisquare(flux, fit,flux_err):
     Returns:
         reduced_chisq (float): The reduced chi-squared value.
     """
-    # Calculate the chi-squared value   
+    # Calculate the chi-squared value
     chi_squared = np.sum(((flux - fit) / flux_err) ** 2)
 
     return chi_squared
 
-def reduced_chisquare(flux, fit, num_params,flux_err):
+
+def reduced_chisquare(flux, fit, num_params, flux_err):
     """Returns the reduced chi-squared value of the fit to the flux.
 
     Args:
@@ -90,7 +92,7 @@ def reduced_chisquare(flux, fit, num_params,flux_err):
     Returns:
         reduced_chisq (float): The reduced chi-squared value.
     """
-    # Calculate the chi-squared value   
+    # Calculate the chi-squared value
     chi_squared = np.sum(((flux - fit) / flux_err) ** 2)
 
     # Calculate the reduced chi-squared value

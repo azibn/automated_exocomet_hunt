@@ -442,7 +442,7 @@ def test_statistic_array(np.ndarray[np.float64_t,ndim=1] flux, int max_half_widt
     m: number of cadences
     """
 
-    for m in range(1,2*n): # looping over the different (full) widths
+    for m in range(1,2*n): # looping over the different (full) widths (first cadence to last cadence in terms of data points.)
 
         m1 = math.floor((m-1)/2) # indices for that width: x
         m2 = (m-1) - m1 # upper bound

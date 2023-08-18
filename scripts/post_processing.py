@@ -20,11 +20,11 @@ def get_output(file_path, include_stats=True):
     elif file_path.endswith(".txt"):
         df = pd.read_csv(file_path, sep=" ", header=None)
 
-               ### column names ###
-    with open('colnames.json', 'r', encoding='utf-8') as f:
+        ### column names ###
+    with open("colnames.json", "r", encoding="utf-8") as f:
         check = f.read()
         columns = json.loads(check)
-        columns = columns['column_names']
+        columns = columns["column_names"]
     df.columns = columns
 
     return df

@@ -10244,7 +10244,7 @@ static PyObject *__pyx_pf_7scripts_21analysis_tools_cython_20test_statistic_arra
   /* "scripts/analysis_tools_cython.pyx":445
  *     """
  * 
- *     for m in range(1,2*n): # looping over the different (full) widths             # <<<<<<<<<<<<<<
+ *     for m in range(1,2*n): # looping over the different (full) widths (first cadence to last cadence in terms of data points.)             # <<<<<<<<<<<<<<
  * 
  *         m1 = math.floor((m-1)/2) # indices for that width: x
  */
@@ -10254,7 +10254,7 @@ static PyObject *__pyx_pf_7scripts_21analysis_tools_cython_20test_statistic_arra
     __pyx_v_m = __pyx_t_10;
 
     /* "scripts/analysis_tools_cython.pyx":447
- *     for m in range(1,2*n): # looping over the different (full) widths
+ *     for m in range(1,2*n): # looping over the different (full) widths (first cadence to last cadence in terms of data points.)
  * 
  *         m1 = math.floor((m-1)/2) # indices for that width: x             # <<<<<<<<<<<<<<
  *         m2 = (m-1) - m1 #upper bound
