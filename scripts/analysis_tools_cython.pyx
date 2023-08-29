@@ -677,7 +677,7 @@ def calc_shape(m,n,time,flux,quality,flux_error,original_time,n_m_bg_start=3,n_m
 
         ### if a transit is less than 0.5 days within 2 days before or after transit centre, remove.
         for i,diff in enumerate(diffs):
-            if diff > 0.5 and abs(t0-t[i])<1.5: # accounts for both sides of gap
+            if diff > 0.5 and abs(t0-t[i])<2: # accounts for both sides of gap
                 return -5,-5,-5,-5,-5,-5,-5, -5
 
         x = flux[cutout_before:cutout_after]
@@ -695,13 +695,13 @@ def calc_shape(m,n,time,flux,quality,flux_error,original_time,n_m_bg_start=3,n_m
 
         try:
             params1, pcov1 = single_gaussian_curve_fit(t,-x)
-            #params2, pcov2 = comet_curve_fit(t,-x)
+            params2, pcov2 = comet_curve_fit(t,-x)
             params3, pcov3 = skewed_gaussian_curve_fit(t,-x,fe)
         except:
             return -3,-3,-3,-3,-3,-3,-3, -3
 
         fit1 = -gauss(t,*params1)
-        #fit2 = -comet_curve(t,*params2)
+        fit2 = -comet_curve(t,*params2)
         fit3 = -skewed_gaussian(t,*params3)
         depth = fit3.min() # depth of comet (based on minimum point; not entirely accurate, but majority of the time true
         #min_time = t[np.argmin(x)] # time of midtransit/at minimum point
@@ -712,7 +712,7 @@ def calc_shape(m,n,time,flux,quality,flux_error,original_time,n_m_bg_start=3,n_m
             # params3[0] is the amplitude of the gaussian...
             # params3[2] is the sigma/width of the gaussian...
             # params3[3] is the skewness...
-            return scores[0]/scores[1], params3[0], params3[2], params3[3], skewness_error, depth, [t,x,q,fe,background_level], [fit1,fit3]
+            return scores[0]/scores[1], params3[0], params3[2], params3[3], skewness_error, depth, [t,x,q,fe,background_level], [fit1,fit2,fit3]
         else:
 
             return -1,-1,-1,-1,-1,-1,-1, -1
@@ -908,7 +908,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
         ### preparing some variables for statistics ###
         try:
             gauss_fit = fits[0]
-            skewed_fit = fits[1]
+            skewed_fit = fits[2]
     
         except:
             pass
@@ -1021,13 +1021,16 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             ax2 = plt.subplot(gs1[2:6,2:]) 
             try:
                 gauss_fit = fits[0]
-                skew_fit = fits[1]
+                comet_fit = fits[1]
+                skew_fit = fits[2]
+                
                 cutout_t = info[0]
                 cutout_x = info[1]
                     
                 ax2.plot(cutout_t, cutout_x,label='data') # flux
                 ax2.plot(cutout_t,gauss_fit,label='gaussian model') # gauss fit
                 ax2.plot(cutout_t,skew_fit,label='skewed gauss model',color='black') # skewed gaussian
+                ax2.plot(cutout_t,comet_fit,label='comet model') # comet fit    
                 ax2.set_xlabel("Time - 2457000 (BTJD Days)")
                 ax2.legend(loc="lower left")
             except:

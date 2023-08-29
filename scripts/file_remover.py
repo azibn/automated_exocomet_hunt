@@ -27,9 +27,10 @@ def read_lightcurve(f, sector=args.s):
 
 
 if __name__ == "__main__":
+    num_processes = multiprocessing.cpu_count() - 1
     for path in paths:
         # print(path)
         # read_lightcurve(path,args.s)
-        pool = multiprocessing.Pool(processes=35)
+        pool = multiprocessing.Pool(processes=num_processes)
         files = glob.glob(os.path.join(path, "*.pkl"))
         pool.map(read_lightcurve, files)
