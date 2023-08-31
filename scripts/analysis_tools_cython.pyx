@@ -619,7 +619,6 @@ def classify(m,n,real,asym):
     :classification: Classification of data. Options are: "maybeTransit", "artefact", "noModelFitted", "gapJustBefore", "gap", "end".
     """
 
-    N = len(real)
     if asym == -2:
         return "end"
     elif asym == -4:
@@ -677,7 +676,7 @@ def calc_shape(m,n,time,flux,quality,flux_error,original_time,n_m_bg_start=3,n_m
 
         ### if a transit is less than 0.5 days within 2 days before or after transit centre, remove.
         for i,diff in enumerate(diffs):
-            if diff > 0.5 and abs(t0-t[i])<2: # accounts for both sides of gap
+            if diff > 0.5 and abs(t0-t[i])< 2: # add t[i] + 1 (check start of gap). accounts for both sides of gap
                 return -5,-5,-5,-5,-5,-5,-5, -5
 
         x = flux[cutout_before:cutout_after]
@@ -859,7 +858,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             a['quality'] = table[table.colnames[2]]
             a['flux_error'] = table[table.colnames[3]]/original_table[original_table.colnames[1]].mean()
             t, flux, quality, real, flux_error = clean_data(a)
-            flux *= real
+            #flux *= real
             table = a
 
         elif method in ['lomb-scargle', 'fourier']:
@@ -888,6 +887,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
 
         ## fourier and Lomb-Scargle computations
         A_mag = np.abs(np.fft.rfft(normalise_flux(flux)))
+  
         freq, powers = LombScargle(t,flux).autopower() # think about that one
         peak_power = powers.max()
 
@@ -1112,16 +1112,16 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             os.makedirs('som_cutouts/')
         except FileExistsError:
             pass
-        data_to_cut = pd.DataFrame(data=[t, flux, quality, flux_error]).T
+        data_to_cut = original_table.to_pandas()
         data_to_cut.columns = ['time','flux','quality','flux_err']
         som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=120) 
 
         try:
-            np.savez(f'som_cutouts/{obj_id}.npz',time=som_lightcurve.time,flux=som_lightcurve.flux, id = obj_id)
+            save_unique_file(obj_id, som_lightcurve)
         except TypeError:
             obj_id = input("object id: ")
-            np.savez(f'som_cutouts/{obj_id}.npz',time=som_lightcurve.time,flux=som_lightcurve.flux, id = obj_id)
-            print(f"saved as {obj_id}.npz")
+            save_unique_file(obj_id, som_lightcurve)
+
             
         del original_table
     if method == None:
@@ -1164,3 +1164,20 @@ def run_test_statistic(flux, factor, timestep, t):
         Ts = nonzero(T1[m]).std() # only the box width selected. Not RMS of all T-statistic
         
         return m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts
+
+
+def save_unique_file(obj_id, som_lightcurve):
+    base_filename = f'som_cutouts/{obj_id}.npz'
+    
+    # Check if the base filename exists
+    if not os.path.exists(base_filename):
+        np.savez(base_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, id=obj_id)
+    else:
+        # If the base filename exists, find a unique filename
+        suffix = 1
+        while True:
+            unique_filename = f'som_cutouts/{obj_id}_{suffix}.npz'
+            if not os.path.exists(unique_filename):
+                np.savez(unique_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, id=obj_id)
+                break
+            suffix += 1
