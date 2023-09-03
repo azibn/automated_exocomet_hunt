@@ -625,6 +625,8 @@ def classify(m,n,real,asym):
         return "gap"
     elif asym == -5:
         return "gapJustBefore"
+    elif asym == -6:
+        return "gapJustAfter"
     elif asym == -3:
         return "noModelFitted"
     elif m < 3:
@@ -634,7 +636,7 @@ def classify(m,n,real,asym):
     else:
         return "maybeTransit"
 
-def calc_shape(m,n,time,flux,quality,flux_error,original_time,n_m_bg_start=3,n_m_bg_scale_factor=1):
+def calc_shape(m,n,time,flux,quality,real,flux_error,n_m_bg_start=3,n_m_bg_scale_factor=1):
     """Fit both symmetric and comet-like transit profiles and compare fit.
 
     original time: time before interpolation step
@@ -646,6 +648,8 @@ def calc_shape(m,n,time,flux,quality,flux_error,original_time,n_m_bg_start=3,n_m
     -2 : Too close to edge of light curve to fit profile
     -3 : Unable to fit model (e.g. timeout)
     -4 : Too much empty space in overall light curve or near dip
+    -5 : Transit event too close to (before) data gap, within 1.5 days of gap.
+    -6 : Transit event too close to (after) data gap, within 1 day after gap.
     (2,3) Widths of comet curve fit segments.
     info: t, x, q, fit1 and fit3 are the transit shape elements 
 
@@ -666,18 +670,33 @@ def calc_shape(m,n,time,flux,quality,flux_error,original_time,n_m_bg_start=3,n_m
     cutout_before = n-(m*n_m_bg_start)
     cutout_after = n+(m*n_m_bg_end)
     
+    
     if cutout_before>= 0 and cutout_after < len(time):
-        t = time[cutout_before:cutout_after]
-        time_ori = original_time[cutout_before:cutout_after]
-        if (t[-1]-t[0]) / np.median(np.diff(t)) / len(t) > 1.5:
-            return -4,-4,-4,-4,-4,-4,-4, -4
-        t0 = time[n]
-        diffs = np.diff(time_ori)
 
+        t = time[cutout_before:cutout_after]
+        #time_ori = original_time[cutout_before:cutout_after]
+
+        # total time span / (cadence * length of lightcurve)
+        if (t[-1]-t[0]) / (np.median(np.diff(t)) * len(t)) > 1.5:
+            print(-4)
+            return -4,-4,-4,-4,-4,-4,-4, -4
+        
+        # min time from T-statistic
+        t0 = time[n]
+        
+        ## the time array without interpolation is used to find any data gaps from distance of data points along time axis.
+        time_ori = time[real == 1]
+        diffs = np.diff(time_ori)
+        
         ### if a transit is less than 0.5 days within 2 days before or after transit centre, remove.
         for i,diff in enumerate(diffs):
-            if diff > 0.5 and abs(t0-t[i])< 2: # add t[i] + 1 (check start of gap). accounts for both sides of gap
-                return -5,-5,-5,-5,-5,-5,-5, -5
+            if diff > 0.5 and abs(t0-time_ori[i]) < 1.5: # add t[i] + 1 (check start of gap). accounts for both sides of gap
+                return -5,-5,-5,-5,-5,-5,-5,-5
+            
+            ### after the data gap
+            if diff > 0.5 and abs(t0 - time_ori[i + 1]) < 1:
+                return -6,-6,-6,-6,-6,-6,-6,-6
+            
 
         x = flux[cutout_before:cutout_after]
         q = quality[cutout_before:cutout_after]
@@ -711,7 +730,9 @@ def calc_shape(m,n,time,flux,quality,flux_error,original_time,n_m_bg_start=3,n_m
             # params3[0] is the amplitude of the gaussian...
             # params3[2] is the sigma/width of the gaussian...
             # params3[3] is the skewness...
+
             return scores[0]/scores[1], params3[0], params3[2], params3[3], skewness_error, depth, [t,x,q,fe,background_level], [fit1,fit2,fit3]
+        
         else:
 
             return -1,-1,-1,-1,-1,-1,-1, -1
@@ -903,7 +924,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             m,n,T2,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts = run_test_statistic(final_flux2, factor, timestep,t)
 
 
-        asym, amplitude, width, skewness, skewness_error, depth, info, fits = calc_shape(m,n,t,flux,quality,flux_error,original_time=original_table.columns[0].data)
+        asym, amplitude, width, skewness, skewness_error, depth, info, fits = calc_shape(m,n,t,flux,quality,real,flux_error)
 
         ### preparing some variables for statistics ###
         try:
@@ -1005,8 +1026,8 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
 
             ### flux and the smoothing function ###
             ax1 = plt.subplot(gs1[2:5,:2]) 
-            ax1.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[original_table.colnames[1]]), s=10,alpha=0.5,zorder=1,label='original lightcurve')
-            ax1.scatter(t, flux,s=10,label='smoothened flux',alpha=0.9,zorder=3)
+            ax1.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[original_table.colnames[1]]), s=5,alpha=0.5,zorder=1,label='original lightcurve')
+            ax1.scatter(t, flux,s=5,label='smoothened flux',alpha=0.9,zorder=3)
             try:
                 ax1.plot(original_table[original_table.colnames[0]],normalise_flux(trend_flux),label='trend',color='black',linewidth=2,zorder=5)
             except:
