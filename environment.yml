@@ -1,4 +1,4 @@
-name: auto-exo
+name: auto_exo
 channels:
   - conda-forge
   - defaults

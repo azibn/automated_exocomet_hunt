@@ -545,7 +545,7 @@ def skewed_gaussian_curve_fit(x,y,y_err):
 
     Parameters:
         x (array-like): time.
-        y (array-like): ligthcurve flux.
+        y (array-like): lightcurve flux.
         y_err (array-like): Associated errors for lightcurve flux.
 
     Returns:
@@ -557,11 +557,13 @@ def skewed_gaussian_curve_fit(x,y,y_err):
     i = np.argmax(y)
     width = x[-1]-x[0]
     
+    ### flux is normalised to 0. errors are normalised to 1. 
+
     ### params initialisation for skewness, time, mean and sigma
     # amplitude, t0, sigma, skewness
     params_init = [y[i],x[i],width/3,1]
     
-    params_bounds=[[0,x[0],0,-30], [np.inf,x[-1],width*3,30]]
+    params_bounds=[[0,x[0],0,-30], [np.inf,x[-1],np.inf,30]]
     params,cov = curve_fit(skewed_gaussian,x,y,p0=params_init,sigma=y_err,bounds=params_bounds,maxfev=100000)
     
     return params, cov 
@@ -690,11 +692,11 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,n_m_bg_start=3,n_m_bg_scale
         
         ### if a transit is less than 0.5 days within 2 days before or after transit centre, remove.
         for i,diff in enumerate(diffs):
-            if diff > 0.5 and abs(t0-time_ori[i]) < 1.5: # add t[i] + 1 (check start of gap). accounts for both sides of gap
+            if diff > 0.5 and abs(t0-time_ori[i]) < 1.5: 
                 return -5,-5,-5,-5,-5,-5,-5,-5
             
             ### after the data gap
-            if diff > 0.5 and abs(t0 - time_ori[i + 1]) < 1:
+            if diff > 0.5 and abs(t0 - time_ori[i + 1]) < 1.5:
                 return -6,-6,-6,-6,-6,-6,-6,-6
             
 
@@ -877,9 +879,9 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             a['time'] = table[table.colnames[0]]
             a['flux'] = flat_flux - np.ones(len(flat_flux)) # resets normalisation to zero.
             a['quality'] = table[table.colnames[2]]
-            a['flux_error'] = table[table.colnames[3]]/original_table[original_table.colnames[1]].mean()
+            a['flux_error'] = table[table.colnames[3]]/original_table[original_table.colnames[1]].mean() 
             t, flux, quality, real, flux_error = clean_data(a)
-            #flux *= real
+            flux *= real
             table = a
 
         elif method in ['lomb-scargle', 'fourier']:
@@ -956,32 +958,19 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
         except:
             cutout_flux = None # check why this raises errors sometimes
             cutout_flux_error = None
-
-
+            chisq_fit1 = chisq_fit3 = reduced_chisq_fit1 = reduced_chisq_fit3 = rmse_fit1 = rmse_fit3 = mae_fit1 = mae_fit3 = 0.0
 
         ### sorting out the lightcurves into the initial groups ### 
         classification = classify(m,n,real,asym)
 
-        try:
-            search =\
-                f_path+' '+str(obj_id) + ' '+\
-                ' '.join([str(round(a,5)) for a in
-                    [minT, minT/Ts, minT_time,
-                    asym,amplitude,width, skewness, skewness_error,
-                    minT_duration,depth, peak_power, M_stat, m,n, chisq_fit1, chisq_fit3,
-                    reduced_chisq_fit1, reduced_chisq_fit3, rmse_fit1, rmse_fit3, mae_fit1, mae_fit3]])+\
-                ' '+classification
-
-        except NameError:
-            chisq_fit1 = chisq_fit3 = reduced_chisq_fit1 = reduced_chisq_fit3 = rmse_fit1 = rmse_fit3 = mae_fit1 = mae_fit3 = 0.0
-            search =\
-                f_path+' '+str(obj_id) + ' '+\
-                ' '.join([str(round(a,6)) for a in
-                    [minT, minT/Ts, minT_time,
-                    asym,amplitude,width, skewness, skewness_error,
-                    minT_duration,depth, peak_power, M_stat, m,n, chisq_fit1, chisq_fit3,
-                    reduced_chisq_fit1, reduced_chisq_fit3, rmse_fit1, rmse_fit3, mae_fit1, mae_fit3]])+\
-                ' '+classification
+        search =\
+            f_path+' '+str(obj_id) + ' '+\
+            ' '.join([str(round(a,5)) for a in
+                [minT, minT/Ts, minT_time,
+                asym,amplitude,width, skewness, skewness_error,
+                minT_duration,depth, peak_power, M_stat, m,n, chisq_fit1, chisq_fit3,
+                reduced_chisq_fit1, reduced_chisq_fit3, rmse_fit1, rmse_fit3, mae_fit1, mae_fit3]])+\
+            ' '+classification
         
         ## little fix for string splitting between SPOC lightcurves and XRP ones
         result = search.split()
@@ -1133,7 +1122,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
             os.makedirs('som_cutouts/')
         except FileExistsError:
             pass
-        data_to_cut = original_table.to_pandas()
+        data_to_cut = pd.DataFrame(data=[t, flux, quality, flux_error]).T
         data_to_cut.columns = ['time','flux','quality','flux_err']
         som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=120) 
 
