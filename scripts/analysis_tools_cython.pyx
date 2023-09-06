@@ -557,8 +557,6 @@ def skewed_gaussian_curve_fit(x,y,y_err):
     i = np.argmax(y)
     width = x[-1]-x[0]
     
-    ### flux is normalised to 0. errors are normalised to 1. 
-
     ### params initialisation for skewness, time, mean and sigma
     # amplitude, t0, sigma, skewness
     params_init = [y[i],x[i],width/3,1]
@@ -651,7 +649,7 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,n_m_bg_start=3,n_m_bg_scale
     -3 : Unable to fit model (e.g. timeout)
     -4 : Too much empty space in overall light curve or near dip
     -5 : Transit event too close to (before) data gap, within 1.5 days of gap.
-    -6 : Transit event too close to (after) data gap, within 1 day after gap.
+    -6 : Transit event too close to (after) data gap, within 1.5 day after gap.
     (2,3) Widths of comet curve fit segments.
     info: t, x, q, fit1 and fit3 are the transit shape elements 
 
