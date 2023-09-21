@@ -8,7 +8,7 @@ import argparse
 import multiprocessing  
 from tqdm import tqdm
 
-parser = argparse.ArgumentParser(description="Analyse lightcurves in target directory.")
+parser = argparse.ArgumentParser(description="Get cutouts of lightcurves across multiple sectors.")
 
 parser.add_argument(
     "-t", help="number of threads to use", default=40, dest="threads", type=int
@@ -16,13 +16,15 @@ parser.add_argument(
 
 parser.add_argument(
     "-m",
-    help="set smoothing method. Default is None.",
+    help="set smoothing method. Default is median.",
     dest="m",
     default='median',
     type=str,
 )
 
-parser.add_argument('-nice', help='set niceness', dest='nice', default=19, type=int')
+parser.add_argument('-save_dir_name',help='name of directory to save files to.', default='som_cutouts/', dest='som_cutouts_directory_name')
+
+parser.add_argument('-nice', help='set niceness', dest='nice', default=8, type=int)
 
 
 args = parser.parse_args()
@@ -36,7 +38,7 @@ def process_file(filepath):
         print(filepath)
         lc, lc_info = import_XRPlightcurve(filepath,sector= int(filepath.split('sector')[1].split('_')[1]))
         lc = lc['time','corrected flux','quality','flux error']
-        results, _ = processing(lc,lc_info=lc_info,method=args.m,som_cutouts=True)
+        results, _ = processing(lc,lc_info=lc_info,method=args.m,som_cutouts=True,som_cutouts_directory_name=args.som_cutouts_directory_name)
     except FileNotFoundError:
         return f"File not found: {filepath}"
     except Exception as e:
@@ -44,7 +46,7 @@ def process_file(filepath):
 
 if __name__ == '__main__':
     # Load the DataFrame with filepaths
-    df = pd.read_csv('som_candidates.csv')  # Adjust the file format and path accordingly
+    df = pd.read_csv('combined_dataframe.txt',skiprows=1)  # Adjust the file format and path accordingly
     
     # Create a pool of worker processes
     pool = multiprocessing.Pool(processes=args.threads)

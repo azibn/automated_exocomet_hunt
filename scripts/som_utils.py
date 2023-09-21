@@ -7,6 +7,7 @@ description: Tools related to using the SOM to cluster exocomet candidates.
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
 
 
 def create_som_cutout(table, min_T: float, half_cutout_length=120):
@@ -62,21 +63,31 @@ def create_som_cutout_test(table, min_T: float, half_cutout_length=120):
         # Extrapolation is required
 
         # Interpolate the existing data
-        interpolator = interp1d(time_values, table.values.T, fill_value="extrapolate")
-        cadence_duration = time_values[1] - time_values[0]
+        interpolator = interp1d(time_values, table["flux"].values, kind='linear',fill_value="extrapolate")
+
         # Generate the extrapolated time values
+        cadence_duration = time_values[1] - time_values[0]
         extrapolated_times = np.linspace(
-            min_time - half_cutout_length * cadence_duration,
-            max_time + half_cutout_length * cadence_duration,
+            min_T - half_cutout_length * cadence_duration,
+            min_T + half_cutout_length * cadence_duration,
             2 * half_cutout_length + 1,
         )
 
-        # Interpolate the extrapolated data
-        extrapolated_data = interpolator(extrapolated_times).T
+        # Interpolate the extrapolated flux values
+        extrapolated_flux = interpolator(extrapolated_times)
+        
+        
+        extrapolated_mask = np.logical_or(
+            extrapolated_times < min_time, extrapolated_times > max_time
+        )
+
+        # Assign extrapolated points with the median of the cutout
+        #median_flux = np.median(table["flux"].values)
+        #extrapolated_flux[extrapolated_mask] = median_flux
+        
 
         # Create a new DataFrame with the extrapolated data
-        column_names = table.columns
-        extrapolated_table = pd.DataFrame(extrapolated_data, columns=column_names)
+        extrapolated_table = pd.DataFrame({'time': extrapolated_times, 'flux': extrapolated_flux})
 
         # Extract the cutout around the min_T value
         cutout = extrapolated_table.iloc[
@@ -90,5 +101,7 @@ def create_som_cutout_test(table, min_T: float, half_cutout_length=120):
     else:
         # No extrapolation needed, extract the cutout directly
         cutout = table.iloc[target_min_index : target_max_index + 1]
+
+    plt.plot(cutout["time"], cutout["flux"] )
 
     return cutout

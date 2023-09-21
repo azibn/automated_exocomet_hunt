@@ -18,6 +18,7 @@ exofop_tess_tois.csv
 
 # Data folders
 betapic/
+synthetic_lightcurves/
 kepler/
 data/
 catalogs/
@@ -27,7 +28,7 @@ mastDownload/
 injection_recovery_*
 test_lightcurves/
 som_cutouts*
-plots/
+som_plots*
 scripts/plots
 
 # scripts

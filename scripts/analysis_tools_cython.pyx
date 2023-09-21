@@ -333,7 +333,7 @@ def clean_data(table):
 def normalise_flux(flux):
     """
     Function: Normalises flux values to 0.
-    - Normalisation is x --> (x/mean(x)) - 1
+    - Normalisation is x --> (x/median(x)) - 1
 
     Parameters:
     :flux (numpy.ndarray): The input flux to be normalized.
@@ -341,8 +341,8 @@ def normalise_flux(flux):
     Returns:
     :normalised flux (numpy.ndarray): The normalized flux array."""
 
-    flux = np.nan_to_num(flux)
-    return flux/flux.mean() - np.ones(len(flux))
+    flux = np.nan_to_num(flux,nan=np.nanmedian(flux))
+    return flux/np.nanmedian(flux) - np.ones(len(flux))
 
 
 def fourier_filter(flux,freq_count):
@@ -834,7 +834,7 @@ def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     final_flux *= real
     return final_flux, periodicnoise_ls2, original_masked_flux
 
-def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_plots=False,twostep=False): 
+def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_cutouts_directory_name='som_cutouts',make_plots=False,twostep=False): 
     """
     
     Function: The main bulk of the search algorithm.
@@ -845,6 +845,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
     :lc_info: Metadata about the lightcurve, usually obtained from `import_lightcurve` or `import_XRPlightcurve`. Default is None.
     :method: Choice of smoothing method for lightcurves. Default is None.
     :som_cutouts: Create SOM (self-organizing map) cutouts of the lightcurve. Default is False.
+    :som_cutouts_directory_name: Name of directory to save cutouts in.
     :make_plots: Creating plots of lightcurve (pre and post-cleaning), the T-statistic of the lightcurve, its position on the SNR/alpha distribution, 
       and a zoomed-in cut for potential candidates.
     :twostep: Perform two-step smoothing (compatible with Fourier/Lomb-Scargle methods only). Default is False.
@@ -865,6 +866,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
 
     if isinstance(table, pd.DataFrame):
         table = Table.from_pandas(table)
+    
     if len(table) > 120: # 120 represents 2.5 days of data
         
         # smoothing operation and normalisation of flux
@@ -873,14 +875,10 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
         wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
         if method in wotan_methods:
             flat_flux, trend_flux = smoothing(table, method=method)
-            a = Table()
-            a['time'] = table[table.colnames[0]]
-            a['flux'] = flat_flux - np.ones(len(flat_flux)) # resets normalisation to zero.
-            a['quality'] = table[table.colnames[2]]
-            a['flux_error'] = table[table.colnames[3]]/original_table[original_table.colnames[1]].mean() 
-            t, flux, quality, real, flux_error = clean_data(a)
+            table = Table([table[table.colnames[0]], flat_flux - np.ones(len(flat_flux)), table[table.colnames[2]], table[table.colnames[3]]/np.nanmedian(table[table.colnames[1]])],names=('time','flux','quality','flux_error'))
+            _ , nonnormalised_flux, _, _, _ = clean_data(original_table)
+            t, flux, quality, real, flux_error = clean_data(table)
             flux *= real
-            table = a
 
         elif method in ['lomb-scargle', 'fourier']:
             t, flux, quality, real, flux_error = clean_data(table)
@@ -1117,18 +1115,19 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,make_
 
     if som_cutouts:
         try:
-            os.makedirs('som_cutouts/')
+            os.makedirs(f'{som_cutouts_directory_name}')
         except FileExistsError:
             pass
-        data_to_cut = pd.DataFrame(data=[t, flux, quality, flux_error]).T
+        #data_to_cut = pd.DataFrame(data=[original_table[original_table.colnames[0]],original_table[original_table.colnames[1]],original_table[original_table.colnames[2]],original_table[original_table.colnames[3]]]).T # this is normalised, need the original flux
+        data_to_cut = pd.DataFrame(data=[t, nonnormalised_flux, quality, flux_error]).T 
         data_to_cut.columns = ['time','flux','quality','flux_err']
-        som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=120) 
+        som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=60) # 2 day window either side 
 
         try:
-            save_unique_file(obj_id, som_lightcurve)
+            save_unique_file(obj_id, som_lightcurve,som_cutouts_directory_name)
         except TypeError:
             obj_id = input("object id: ")
-            save_unique_file(obj_id, som_lightcurve)
+            save_unique_file(obj_id, som_lightcurve,som_cutouts_directory_name)
 
             
         del original_table
@@ -1174,8 +1173,8 @@ def run_test_statistic(flux, factor, timestep, t):
         return m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts
 
 
-def save_unique_file(obj_id, som_lightcurve):
-    base_filename = f'som_cutouts/{obj_id}.npz'
+def save_unique_file(obj_id, som_lightcurve,som_cutouts_directory_name='som_cutouts'):
+    base_filename = f'{som_cutouts_directory_name}/{obj_id}.npz'
     
     # Check if the base filename exists
     if not os.path.exists(base_filename):
@@ -1184,7 +1183,7 @@ def save_unique_file(obj_id, som_lightcurve):
         # If the base filename exists, find a unique filename
         suffix = 1
         while True:
-            unique_filename = f'som_cutouts/{obj_id}_{suffix}.npz'
+            unique_filename = f'{som_cutouts_directory_name}/{obj_id}_{suffix}.npz'
             if not os.path.exists(unique_filename):
                 np.savez(unique_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, id=obj_id)
                 break

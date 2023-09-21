@@ -62,13 +62,6 @@ parser.add_argument("-nice", help="set niceness", dest="nice", default=8, type=i
 
 
 parser.add_argument(
-    "-return_arraydata",
-    help="save the full processed lightcurve as an .npz file",
-    dest="return_arraydata",
-    action="store_true",
-)
-
-parser.add_argument(
     "-m",
     help="set smoothing method. Default is None.",
     dest="m",
@@ -84,11 +77,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "-prep_som",
+    "-som_cutouts",
     help="extract lightcurves cutouts for SOM clustering. Default is False.",
     action="store_true",
     dest="som",
 )
+
+
 
 # Get directories from command line arguments.
 args = parser.parse_args()
@@ -113,7 +108,7 @@ lock = m.Lock()
 # pipeline_options = {"xrp":".pkl","spoc":".fits"}
 
 
-def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arraydata):
+def run_lc(f_path):
     """
      Function: Processes the lightcurves
 
@@ -156,39 +151,7 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
             os.makedirs("output_log")
         except FileExistsError:
             pass
-        try:
-            os.makedirs("lc_metadata")
-        except FileExistsError:
-            pass
 
-        if return_arraydata:
-            if f_path.endswith(".pkl"):
-                obj_id = lc_info[1]
-            else:
-                obj_id = lc_info[1]
-            try:
-                os.makedirs(f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/")
-            except FileExistsError:
-                pass
-            try:
-                os.makedirs(
-                    f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}"
-                )
-            except FileExistsError:
-                pass
-            # except NameError:
-            #     sector = input("sector:")
-            #     os.makedirs(
-            #         f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}"
-            #     )
-            np.savez(
-                f"/storage/astro2/phrdhx/tesslcs/lc_arraydata/sector_{sector}/tesslc_{obj_id}.npz",
-                obj_id=obj_id,
-                time=save_data[0],
-                flux=save_data[1],
-                trend_flux=save_data[2],
-                quality=save_data[3],
-            )  # ,agg_flux=flux_aggressive_filter,agg_trend_flux=trend_flux_aggressive_filter,quality=quality)
 
         if args.n:
             return
@@ -198,11 +161,7 @@ def run_lc(f_path, get_metadata=args.metadata, return_arraydata=args.return_arra
         lock.acquire()
         with open(os.path.join("output_log", args.of), "a") as out_file:
             out_file.write(result_str + "\n")
-        if get_metadata:
-            with open(
-                os.path.join("lc_metadata/", f"metadata_sector_{sector}.txt"), "a"
-            ) as out_file2:
-                out_file2.write(f + " " + lc_info + " " + f"{sector}" + "\n")
+
 
         lock.release()
     except (KeyboardInterrupt, SystemExit):
@@ -225,7 +184,7 @@ if __name__ == "__main__":
     for path in paths:
         if not os.path.isdir(path):
             if os.path.isfile(path):
-                run_lc(path, args.metadata)
+                run_lc(path)
 
                 sys.exit()
 
