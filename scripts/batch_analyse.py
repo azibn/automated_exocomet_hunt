@@ -147,10 +147,8 @@ def run_lc(f_path):
             som_cutouts=args.som,
         )
 
-        try:
-            os.makedirs("output_log")
-        except FileExistsError:
-            pass
+        # make directory for output file.
+        os.makedirs("outputs", exist_ok=True)
 
 
         if args.n:
@@ -159,7 +157,7 @@ def run_lc(f_path):
         lc_info = " ".join([str(i) for i in lc_info])
 
         lock.acquire()
-        with open(os.path.join("output_log", args.of), "a") as out_file:
+        with open(os.path.join("outputs", args.of), "a") as out_file:
             out_file.write(result_str + "\n")
 
 

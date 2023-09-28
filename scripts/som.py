@@ -79,7 +79,7 @@ def stack_npz_files(directory):
 
     return stacked_median_lcs, stacked_depth_lcs, stacked_ids, id_map
 
-def plot_all_arrays(som, bins=np.arange(241)):
+def plot_all_arrays(som, bins=np.arange(121)):
     fig, axes = plt.subplots(somshape[0], somshape[1], figsize=(50, 50))
     fig.subplots_adjust(
         wspace=0.4, hspace=0.4

@@ -181,8 +181,43 @@ def import_XRPlightcurve(file_path,sector: int,clip=3,drop_bad_points=True,ok_fl
         return table, lc[0:6]
 
 
+def mad_cuts(table,info,clip):
+    # loading Ethan Kruse bad times
+    bad_times = xrpdata.load_bad_times()
+    bad_times = bad_times - 2457000
+    
+    # loading MAD 
+    mad_df = xrpdata.load_mad()
+    sec = info['SECTOR']
+    camera = info['CAMERA']
+
+    mad_arr = mad_df.loc[:len(table)-1,f"{sec}-{camera}"]
+    sig_clip = sigma_clip(mad_arr,sigma=clip,masked=True)
+
+    # applied MAD cut to keep points within selected sigma
+    mad_cut = mad_arr.values < ~sig_clip.mask 
+    
+    # return indices of values above MAD threshold
+    matched_ind = np.where(~mad_cut) # indices of MAD's above threshold
+
+    # Change quality of matched indices to 2**(17-1) (or add 2**(17-1) if existing flag already present)
+    table['QUALITY'][matched_ind] += 2**(17-1)
+    table['QUALITY'] = table['QUALITY'].astype(np.int32) # int32 set so it can work with `get_quality_indices` function
+
+    # Ethan Kruse bad time mask
+    mask = np.ones_like(table['TIME'], dtype=bool)
+    for i in bad_times:
+        newchunk = (table['TIME']<i[0])|(table['TIME']>i[1])
+        mask = mask & newchunk
+        
+    # Apply Kruse bad mask to table
+    table = table[mask]
+
+    return table
+
+
 def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX', 
-                      ok_flags=[], return_type='astropy'):
+                      ok_flags=[], pipeline='eleanor-lite', return_type='astropy'):
 
     """
     Function: Imports lightcurve and performs data cleaning.
@@ -193,6 +228,7 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
     :flux (str, optional): The flux type of the lightcurve. Options: 'PDCSAP_FLUX', 'SAP_FLUX', 'FLUX'. The default is 'PDCSAP_FLUX'. 
     :ok_flags (list, optional): A list of additional quality flags that are considered acceptable and should not be dropped during the preprocessing. Flags deemed to be OK:
         - 5: reaction wheel zero crossing, matters for short cadence (Kepler)
+    :pipeline: The pipeline used to process the lightcurve. Options: 'eleanor-lite', 'eleanor', 'kplr', 'ktwo', 'tasoc'. The default is 'eleanor-lite'.
     :return_type (str, optional): Specifies format of the returned data. Options: 'astropy', 'pandas'. The default value is 'astropy'.
 
     Returns:
@@ -207,20 +243,45 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
     objdata = hdulist[0].header
     scidata = hdulist[1].data
 
-    if 'kplr' in file_path:
-        table = Table(scidata)['TIME',flux,'SAP_QUALITY','SAP_FLUX_ERR']
-        info = [objdata['OBJECT'],objdata['KEPLERID'],objdata['KEPMAG'],objdata['QUARTER'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
-    elif 'ktwo' in file_path:
-        table = Table(scidata)['TIME',flux,'SAP_QUALITY','PDSCAP_FLUX_ERR']
-        info = [objdata['OBJECT'],objdata['KEPLERID'],objdata['KEPMAG'],objdata['CAMPAIGN'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
-    elif 'tasoc' in file_path:
-        table = Table(scidata)['TIME',flux,'QUALITY']
-    else:
-        table = Table(scidata)['TIME',flux,'QUALITY','PDCSAP_FLUX_ERR']
-        info = [objdata['TICID'],objdata['TESSMAG'],objdata['SECTOR'],objdata['CAMERA'],objdata['CCD'],objdata['RA_OBJ'],objdata['DEC_OBJ']]
-    ## To-do: Add TASOC compatibility.
+    pipeline_dict = {
+    'eleanor-lite': {
+        'columns': ['TIME', 'CORR_FLUX', 'PCA_FLUX', 'QUALITY', 'FLUX_ERR'],
+        'info': ['TICID', 'TMAG', 'SECTOR', 'CAMERA','CCD','RA_OBJ', 'DEC_OBJ']
+        # TMAG on eleanor-lite is set as 999 for all lightcurves. Don't know why.
+    },
+    'kplr': {
+        'columns': ['TIME', 'flux', 'SAP_QUALITY', 'SAP_FLUX_ERR'],
+        'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'QUARTER', 'RA_OBJ', 'DEC_OBJ']
+    },
+    'ktwo': {
+        'columns': ['TIME', 'flux', 'SAP_QUALITY', 'PDSCAP_FLUX_ERR'],
+        'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'CAMPAIGN', 'RA_OBJ', 'DEC_OBJ']
+    },
+    'tasoc': {
+        'columns': ['TIME', 'flux', 'QUALITY'],
+        'info': []
+    },
+    'spoc': {
+        'columns': ['TIME', 'PDCSAP_FLUX', 'QUALITY','PDCSAP_FLUX_ERR'],
+        'info': ['TICID','TESSMAG','SECTOR','CAMERA', 'CCD','RA_OBJ','DEC_OBJ']
+    },
+
+
+    }
+
+    try:
+        table_columns = pipeline_dict[pipeline]['columns']
+        table = Table(scidata)[table_columns]
+        info = [objdata[field] for field in pipeline_dict[pipeline]['info']]
+    except KeyError:
+        print("Pipeline not specified. Exiting.")
+        return
     
     hdulist.close()
+
+    # for eleanor lightcurves, perform MAD cuts by default.
+    if (pipeline == 'eleanor-lite'):
+        table = mad_cuts(table,info,clip)
 
     if drop_bad_points:
         bad_points = []

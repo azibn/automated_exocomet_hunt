@@ -13,7 +13,7 @@ archive_analyse.sh
 
 # Data files
 eb_cat.txt
-exofop_tess_tois.csv
+*.csv
 
 
 # Data folders
@@ -34,10 +34,11 @@ scripts/plots
 # scripts
 scripts/selfsom.py ### Dave's code
 scripts/som/ ### SOM tools from TransitSOM
+scripts/file_remover.py ## misc script to remove lightcurves fainter than Tmag = 13 in pkl lightcurves
+scripts/eleanorlite_mag.py ## misc script for idenitfying Tmag problem in eleanor-lite lightcurves.
 
 # poster
 poster/
-
 
 # extra
 injection_tools.py
@@ -45,14 +46,8 @@ lookup_checker.py
 lost_ids.txt
 __pycache__
 
-# xrp files
-qstat.py
-
 # output files
 output*
-
-# batch_analyse_v2
-batch_reanalyse_asym.py
 
 # Temp vim files
 *.swp
