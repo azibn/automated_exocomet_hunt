@@ -7,8 +7,12 @@ from analysis_tools_cython import processing, import_XRPlightcurve
 import argparse
 import multiprocessing  
 from tqdm import tqdm
+import sys
 
 parser = argparse.ArgumentParser(description="Get cutouts of lightcurves across multiple sectors.")
+
+
+
 
 parser.add_argument(
     "-t", help="number of threads to use", default=40, dest="threads", type=int
@@ -25,6 +29,8 @@ parser.add_argument(
 parser.add_argument('-save_dir_name',help='name of directory to save files to.', default='som_cutouts/', dest='som_cutouts_directory_name')
 
 parser.add_argument('-nice', help='set niceness', dest='nice', default=8, type=int)
+parser.add_argument('-snr', '--snr-threshold', help= 'SNR threshold to use for selecting lightcurves', dest='snr', default=5, type=float)
+
 
 
 args = parser.parse_args()
@@ -46,13 +52,36 @@ def process_file(filepath):
 
 if __name__ == '__main__':
     # Load the DataFrame with filepaths
-    df = pd.read_csv('combined_dataframe.txt',skiprows=1)  # Adjust the file format and path accordingly
+    print("reading in dataframe.")
+    df = pd.read_csv('combined_dataframe.txt',skiprows=1) #,sep=" ",skiprows=1,header=None)
     
+    ## commented because this is the version where the anomalies are removed.
+    #with open("colnames.json", "r", encoding="utf-8") as f:
+    #    check = f.read()
+    #    columns = json.loads(check)
+    #    columns = columns["column_names"]
+    #df.columns = columns
+    print("dataframe read. Now applying filters and cuts")
+    df = df[df.transit_prob == 'maybeTransit']
+    df.asym_score = df.asym_score.astype(float)
+    df.snr = df.snr.astype(float)
+    #df['abs_path'] = df['path'].str.replace('/tmp/tess/', '/storage/astro2/phrdhx/tesslcs/')
+
+    df = df[(df.asym_score <= 3)].reset_index(drop=True)
+    data_new = df[abs(df.snr) >= args.snr].reset_index(drop=True)
+    data_new.duration = data_new.duration.astype(float)
+    data_new.drop(data_new[data_new['duration'] <= 0.4].index,inplace=True)
+    #data_new['abs_depth'] = abs(data_new.depth)
+
+    # getting rid of anything that is more than 0.1% transit depth
+    data_new.abs_depth = data_new.abs_depth.astype(float)
+    data_new.drop(data_new[(data_new['abs_depth'] >= 0.1)].index,inplace=True)
+
     # Create a pool of worker processes
     pool = multiprocessing.Pool(processes=args.threads)
-    
+    print("starting multiprocessing.")
     # Use the `map` function to apply the `process_file` function to each filepath in parallel
-    processed_data = pool.map(process_file, df['abs_path'])
+    processed_data = pool.map(process_file, data_new['abs_path'])
     
     # Close the pool of worker processes
     pool.close()
@@ -60,5 +89,5 @@ if __name__ == '__main__':
     
     # Now, `processed_data` contains the processed data for each file
     # You can work with this data as needed
-
+    print("process finished")
 

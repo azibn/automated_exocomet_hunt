@@ -181,15 +181,15 @@ def import_XRPlightcurve(file_path,sector: int,clip=3,drop_bad_points=True,ok_fl
         return table, lc[0:6]
 
 
-def mad_cuts(table,info,clip):
+def mad_cuts(table,info,clip=3):
     # loading Ethan Kruse bad times
     bad_times = xrpdata.load_bad_times()
     bad_times = bad_times - 2457000
     
     # loading MAD 
     mad_df = xrpdata.load_mad()
-    sec = info['SECTOR']
-    camera = info['CAMERA']
+    sec = info[2]
+    camera = info[3]
 
     mad_arr = mad_df.loc[:len(table)-1,f"{sec}-{camera}"]
     sig_clip = sigma_clip(mad_arr,sigma=clip,masked=True)
@@ -246,7 +246,7 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
     pipeline_dict = {
     'eleanor-lite': {
         'columns': ['TIME', 'CORR_FLUX', 'PCA_FLUX', 'QUALITY', 'FLUX_ERR'],
-        'info': ['TICID', 'TMAG', 'SECTOR', 'CAMERA','CCD','RA_OBJ', 'DEC_OBJ']
+        'info': ['TIC_ID', 'TMAG', 'SECTOR', 'CAMERA','CCD','RA_OBJ', 'DEC_OBJ']
         # TMAG on eleanor-lite is set as 999 for all lightcurves. Don't know why.
     },
     'kplr': {
@@ -269,19 +269,19 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
 
     }
 
-    try:
-        table_columns = pipeline_dict[pipeline]['columns']
-        table = Table(scidata)[table_columns]
-        info = [objdata[field] for field in pipeline_dict[pipeline]['info']]
-    except KeyError:
-        print("Pipeline not specified. Exiting.")
-        return
+    #try:
+    table_columns = pipeline_dict[pipeline]['columns']
+    table = Table(scidata)[table_columns]
+    info = [objdata[field] for field in pipeline_dict[pipeline]['info']]
+    #except KeyError:
+    #    print("Pipeline not specified. Exiting.")
+    #    return
     
     hdulist.close()
 
     # for eleanor lightcurves, perform MAD cuts by default.
     if (pipeline == 'eleanor-lite'):
-        table = mad_cuts(table,info,clip)
+        table = mad_cuts(table,info)
 
     if drop_bad_points:
         bad_points = []
@@ -1182,7 +1182,18 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
         #data_to_cut = pd.DataFrame(data=[original_table[original_table.colnames[0]],original_table[original_table.colnames[1]],original_table[original_table.colnames[2]],original_table[original_table.colnames[3]]]).T # this is normalised, need the original flux
         data_to_cut = pd.DataFrame(data=[t, nonnormalised_flux, quality, flux_error]).T 
         data_to_cut.columns = ['time','flux','quality','flux_err']
-        som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=60) # 2 day window either side 
+        som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=36) # 2 day window either side 
+
+        #x1 = np.mean(som_lightcurve.flux[0:12])
+        #x2 = np.mean(som_lightcurve.flux[-13:-1]) # the last 12 points
+
+        #y1 = np.mean(som_lightcurve.time[0:24])
+        #y2 = np.mean(som_lightcurve.time[-25:-1])
+        #grad = (x2-x1)/(y2-y1)
+        #background_level = x1 + grad * (som_lightcurve.time - y1)
+        #som_lightcurve.flux = som_lightcurve.flux - background_level
+
+
 
         try:
             save_unique_file(obj_id, som_lightcurve,som_cutouts_directory_name)
@@ -1239,7 +1250,7 @@ def save_unique_file(obj_id, som_lightcurve,som_cutouts_directory_name='som_cuto
     
     # Check if the base filename exists
     if not os.path.exists(base_filename):
-        np.savez(base_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, id=obj_id)
+        np.savez(base_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, background_subtracted_flux = som_lightcurve.background_subtracted_flux, id=obj_id)
     else:
         # If the base filename exists, find a unique filename
         suffix = 1

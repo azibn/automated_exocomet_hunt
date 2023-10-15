@@ -30,6 +30,7 @@ test_lightcurves/
 som_cutouts*
 som_plots*
 scripts/plots
+target_lsits/
 
 # scripts
 scripts/selfsom.py ### Dave's code

@@ -45,7 +45,7 @@ os.makedirs(output_directory, exist_ok=True)
 
 # Function to generate a single synthetic lightcurve and save it
 def generate_and_save_synthetic_lightcurve(i,lc_info=lc_info):
-    depth = 10 ** np.random.uniform(0.2, 0.4)
+    depth = 10 ** np.random.uniform(0.3, 0.4)
     injected_time = np.random.uniform(min(time), max(time))
     sigma = np.random.uniform(0.01, 0.1)  # Example range for sigma
     skewness = np.random.uniform(-20,20)   # Example range for skewness

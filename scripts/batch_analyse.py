@@ -15,6 +15,8 @@ from analysis_tools_cython import (
     processing,
     folders_in,
 )
+from tqdm import tqdm
+import time
 
 os.environ["OMP_NUM_THREADS"] = "1"
 warnings.filterwarnings("ignore")
@@ -31,9 +33,9 @@ parser.add_argument("-o", default=f"output.txt", dest="of", help="output file")
 
 parser.add_argument(
     "-f",
-    help='select flux. "corrected flux is default. XRP lightcurve options are "corrected flux", "PCA flux" or "raw flux". For other lightcurves, options are "PDCSAP_FLUX"',
+    help='select flux. "CORR_FLUX is default (`eleanor-lite`). XRP lightcurve options are "corrected flux", "PCA flux" or "raw flux". For other lightcurves, options are "PDCSAP_FLUX"',
     dest="f",
-    default="corrected flux",
+    default="CORR_FLUX",
 )
 parser.add_argument(
     "-c",
@@ -136,7 +138,7 @@ def run_lc(f_path):
 
         else:
             table, lc_info = import_lightcurve(f_path, flux=args.f)
-            table = table["TIME", args.f, "QUALITY", "PDCSAP_FLUX_ERR"]
+            table = table["TIME", args.f, "QUALITY", "FLUX_ERR"]
         result_str, save_data = processing(
             table,
             f_path,
@@ -147,12 +149,13 @@ def run_lc(f_path):
             som_cutouts=args.som,
         )
 
+        if args.n:
+            # print result_str in terminal
+            print(result_str)
+            return
+        
         # make directory for output file.
         os.makedirs("outputs", exist_ok=True)
-
-
-        if args.n:
-            return
 
         lc_info = " ".join([str(i) for i in lc_info])
 
@@ -168,23 +171,51 @@ def run_lc(f_path):
     except Exception as e:
         print("\nError with file " + f_path, file=sys.stderr)
         traceback.print_exc()
+    except:
+        print(f"An error occurred: {e}")
+    # Exit the script with an error code
+        sys.exit(1)
+
+# def find_fits_files(path: str) -> List[str]:
+#     """
+#     Recursively searches for all .fits files in the specified directory and its subdirectories.
+#     Returns a list of file paths.
+#     """
+#     fits_files = []
+#     for entry in tqdm(os.scandir(path)):
+#         if entry.is_file() and entry.name[-5:] == ".fits":
+#             fits_files.append(entry.path)
+#         elif entry.is_dir():
+#             fits_files.extend(find_fits_files(entry.path))
+#     return fits_files
+
+
+
 
 
 if __name__ == "__main__":
-    if "sector" in args.path[0]:
+    if ("sector" in args.path[0]) & (args.path[0].endswith('.pkl')):
         sector = int(os.path.split(args.path[0])[0].split("sector")[1].split("_")[1])
         print(f"sector {sector}")
     else:
-        sector = int(input("sector: "))
+        sector = input("Sector? ")
 
     pool = multiprocessing.Pool(processes=args.threads)
-
+    
     for path in paths:
         if not os.path.isdir(path):
-            if os.path.isfile(path):
+            if os.path.isfile(path) & path.endswith(".fits"):
                 run_lc(path)
 
                 sys.exit()
+            elif path.endswith(".txt"):
+                "processes a list of TIC IDs"
+                print("processing txt file")
+                with open(path, "r") as file:
+                    files = [line.strip() for line in file.readlines()]
+                pool.map(run_lc, files)
+                sys.exit()
+
 
         # if we are in the lowest subdirectory, perform glob this way.
 
@@ -198,14 +229,17 @@ if __name__ == "__main__":
             pool.map(run_lc, fits)
             pool.map(run_lc, pkl)
 
+
+
         else:
             print("globbing subdirectories")
-
             # Start at Sector directory, glob goes through `target/000x/000x/xxxx/**/*lc.fits`
-            fits = glob.glob(os.path.join(path, "target/**/**/**/**/*lc.fits"))
-            pkl = glob.glob(os.path.join(path, "**/*.pkl"))
 
-            print("running the search...")
+            
+            pkl = glob.glob(os.path.join(path, "**/*.pkl"),recursive=True)
 
-            pool.map(run_lc, fits)
+            #pool.map(run_lc, fits)
             pool.map(run_lc, pkl)
+
+    pool.close()
+    pool.join()
