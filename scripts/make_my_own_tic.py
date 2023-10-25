@@ -1,6 +1,14 @@
 import os
 import re
 import multiprocessing
+import argparse 
+
+parser = argparse.ArgumentParser(description="Get TICs of lightcurves across for a specified sector.")
+parser.add_argument('-s','--sector', help='sector to get TICs for', dest='sector', type=str)
+parser.add_argument('-t','--threads',help='number of threads to use', dest='threads', default=40, type=int)
+
+args = parser.parse_args()
+
 
 # Regular expression pattern to match a 16-digit string
 pattern = r'\d{16}'
@@ -30,9 +38,9 @@ def process_directory(directory, output_file):
 
 if __name__ == "__main__":
     # Directory containing your files
-    directory = "/storage/astro2/phrdhx/eleanor-lite/s0019"
+    directory = f"/storage/astro2/phrdhx/eleanor-lite/s00{args.sector}"
     # Name of the text file to which 16-digit strings will be appended
-    output_file = "s19-eleanor-lite.txt"
+    output_file = f"tic_project/s{args.sector}-eleanor-lite-project.txt"
 
     # Check if the output file already exists, if not, create it
     if not os.path.exists(output_file):
@@ -40,12 +48,12 @@ if __name__ == "__main__":
             pass
 
     # Create a multiprocessing Pool
-    pool = multiprocessing.Pool(processes=40)
+    pool = multiprocessing.Pool(processes=args.threads)
 
     # Use the Pool to process directories in parallel
     print("Starting multiprocessing pool")
     pool.starmap(process_directory, [(os.path.join(directory, d), output_file) for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))])
-
+    print(f"file saved as {output_file}")
     # Close the Pool and wait for all processes to finish
     pool.close()
     pool.join()

@@ -72,6 +72,15 @@ parser.add_argument(
 )
 
 parser.add_argument("-n", help="does not save output file", action="store_true")
+
+parser.add_argument(
+    "-pipeline",
+    help="pipeline choice. Default is `eleanor-lite`. Other options are `spoc` and `xrp`",
+    default="eleanor-lite",
+    type=str
+)
+
+
 parser.add_argument(
     "-q",
     help="drop bad quality data. To keep bad quality data, call this argument. Default is True",
@@ -131,14 +140,15 @@ def run_lc(f_path):
         f = os.path.basename(f_path)
         print(f_path)
         if f_path.endswith(".pkl"):
+
             table, lc_info = import_XRPlightcurve(
                 f_path, sector=sector, clip=args.c, drop_bad_points=args.q
             )
-            table = table["time", args.f, "quality", "flux error"]
+            table = table[table.colnames[:5]]
 
         else:
-            table, lc_info = import_lightcurve(f_path, flux=args.f)
-            table = table["TIME", args.f, "QUALITY", "FLUX_ERR"]
+            table, lc_info = import_lightcurve(f_path, flux=args.f, pipeline=args.pipeline)
+            table = table[table.colnames[:5]]
         result_str, save_data = processing(
             table,
             f_path,
@@ -235,10 +245,10 @@ if __name__ == "__main__":
             print("globbing subdirectories")
             # Start at Sector directory, glob goes through `target/000x/000x/xxxx/**/*lc.fits`
 
-            
+            fits = glob.glob(os.path.join(path, "**/*lc.fits"),recursive=True)
             pkl = glob.glob(os.path.join(path, "**/*.pkl"),recursive=True)
 
-            #pool.map(run_lc, fits)
+            pool.map(run_lc, fits)
             pool.map(run_lc, pkl)
 
     pool.close()

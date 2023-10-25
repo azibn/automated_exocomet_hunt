@@ -21,11 +21,11 @@ for filename in tqdm(os.listdir(folder_path)):
     if filename.endswith('.txt') or filename.endswith('.csv'):  # Adjust the file extension as needed
         file_path = os.path.join(folder_path, filename)
         #print(f"now concatenating {file_path}")
-        df = pd.read_csv(file_path, sep=",", header=None)
+        df = pd.read_csv(file_path, header=None, sep=' ')
         final_df = pd.concat([final_df, df], ignore_index=True)
 
 
 print("Saving to large dataframe now")
 # Save the final concatenated DataFrame to a new file if needed
-final_df.to_csv(f'{args.o}', index=False)
+final_df.to_csv(f'{args.o}', index=False,sep=',',header=None)
 print(f"Done! Saved as {args.o}")

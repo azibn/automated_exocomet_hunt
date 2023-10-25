@@ -50,15 +50,14 @@ def create_som_cutout_test(table, min_T: float, half_cutout_length=120):
 
         # Interpolate the extrapolated flux values
         extrapolated_flux = interpolator(extrapolated_times)
-        
-        
+
         extrapolated_mask = np.logical_or(
             extrapolated_times < min_time, extrapolated_times > max_time
         )
 
         # Assign extrapolated points with the median of the cutout
-        #median_flux = np.median(table["flux"].values)
-        #extrapolated_flux[extrapolated_mask] = median_flux
+        median_flux = np.median(table["flux"].values)
+        extrapolated_flux[extrapolated_mask] = median_flux
         
 
         # Create a new DataFrame with the extrapolated data

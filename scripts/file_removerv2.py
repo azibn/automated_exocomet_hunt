@@ -4,52 +4,50 @@ import glob
 import multiprocessing
 import pandas as pd
 from astropy.io import fits
+from tqdm import tqdm
+import time
+import sys
 
 parser = argparse.ArgumentParser(
     description="A script to delete files that are fainter than our cutoff magnitude."
 )
-parser.add_argument(help="target directory", default=".", nargs="+", dest="path")
+
 
 args = parser.parse_args()
 
 paths = []
-for path in args.path:
-    paths.append(os.path.expanduser(path))
 
-
-lookup = pd.read_csv("project_lookup.csv")
-
-
-def read_lightcurve(f, lookup=lookup):
-    try:
-        hdul = fits.open(f)
-        ticid = hdul[0].header["TICID"]
-        hdul.close()
-    except FileNotFoundError:
-        print("Import failed: file not found")
-        return
-
-    failed_tics = []
-    try:
-        mag = lookup[lookup["TIC"] == ticid].reset_index(drop=True).loc[0].Magnitude
-    except IndexError:
-        failed_tics.append(ticid)
-        print(f"Import failed: TIC {ticid} not found in lookup table.")
+def read_lightcurve(file):
+    #print(f)
+    hdul = fits.open(file)
+    ticid = hdul[0].header["TIC_ID"]
+    hdul.close()
+    
+    mag = data[data.TIC_ID == ticid]["Magnitude"].values[0]
 
     if mag > 13:
-        os.remove(f)
+        os.remove(file)
         print(
-            f"file {ticid} deleted, magnitude {mag}. Subdirectory {os.path.dirname(f)} deleted."
+            f"file {ticid} deleted, magnitude {mag}. Subdirectory {os.path.dirname(file)} deleted."
         )
-        os.rmdir(os.path.dirname(f))
+        os.rmdir(os.path.dirname(file))
     else:
-        print("TIC" + ticid)
-
+        print(f"TIC {ticid}, magnitude {mag}")
 
 if __name__ == "__main__":
+    print("reading data")
+    data = pd.read_csv("s9.csv")
+    mag = data['Magnitude']
+    files = data['new_path'].to_list()
+    print("file uploaded")
     num_processes = multiprocessing.cpu_count() - 1
+    
+    pool = multiprocessing.Pool(processes=num_processes)
+    print("number of threads used: " + str(num_processes))
 
-    for path in paths:
-        pool = multiprocessing.Pool(processes=num_processes)
-        files = glob.glob(os.path.join(path, "**/**/**/**/*.fits"))
-        pool.map(read_lightcurve, files)
+    pool.map(read_lightcurve, files)
+        #read_lightcurve(i)
+
+    pool.close()
+    pool.join()
+
