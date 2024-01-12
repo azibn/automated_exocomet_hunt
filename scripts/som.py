@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import argparse
 import warnings
 import matplotlib
@@ -36,29 +37,22 @@ function to create the cutouts of lightcurve transits. These cutouts are then st
 parser = argparse.ArgumentParser(description="Analyse lightcurves in target directory.")
 parser.add_argument(help="target directory(s)", default=".", nargs="+", dest="path")
 
-parser.add_argument("-s", "--save", help="save plots. False by default.", action="store_true", dest="save") ### true by default
+parser.add_argument("-ps", "--plots-save", help="save plots. False by default.", action="store_true", dest="save") ### true by default
 parser.add_argument("-kname", "--kohonen-name", help="Name of output kohonen data file.", dest="outfile",default=None) ### true by default
 
 
 parser.add_argument(
-    "-somshape",
+    "-shape",
     "--somshape",
     help="som grid size. Enter the somshape in the form '(x,y)'",
-    dest="grid",
+    dest="shape",
 )
 
 parser.add_argument(
-    "-i", "--iterations", help="number of iterations", default=500, dest="iterations",type=int
+    "-i", "--iterations", help="number of iterations", default=1000, dest="iterations",type=int
 )
-
-parser.add_argument("-msname", "--mapsave-name",help="name of output SOM map.", dest = "output_mapsave")
-
-parser.add_argument("-psname", "--pixelsave-name",help="name of output SOM map.", dest = "output_pixelsave")
-
-parser.add_argument("-o", "--outfile",help="name of output Kohonen file.", dest = "outfile")
-
-parser.add_argument("-norm", "--normalisation_method",help="the normalisation method for the cutouts. Default is depth normalisation.", dest = "norm", default = "depth")
-
+parser.add_argument("-as", "--array-save", help="save input arrays", action="store_true", dest="array_save") ### true by default
+parser.add_argument("-array-save-name", "--array-save-name", help="name to give SOM input arrays. Please save as `.npz` file, otherwise will not save.", dest="array_save_name") ### true by default
 
 # Get directories from command line arguments.
 args = parser.parse_args()
@@ -99,40 +93,52 @@ def stack_npz_files(directory):
         
         ## normalisation method
         
-               
-        normalised_lightcurve = (flux)/np.median(flux)
-        median = np.median(flux)
-        #depth_normalised_lightcurve = (data['flux'] - median) / median
-        abs_depth = median - np.min(flux)  # Assuming the minimum of the lightcurve is the minimum point
-        depth_normalised_lightcurve = ((flux - median) / abs_depth + 1)
-        #elif normalisation_method == 'depth and width':
+        #depth_normalised_flux = remove_depth_and_normalize(flux)
+        depth_normalised_flux = normalise_depth(flux)
+
         
-        abs_depth_unsubtracted = np.median(original_flux) - np.min(original_flux)
-        depth_normalised_lightcurve_unsubtracted = ((original_flux - np.median(original_flux)) / abs_depth_unsubtracted + 1)
         
-        #fig, ax = plt.subplots(1, 2, figsize=(12, 4))  # 1 row, 2 columns of subplots
-        
-        ##ax[0].scatter(data['time'],depth_normalised_lightcurve,s=5)
-        #ax[0].set_title("TIC {} - unsubtracted background".format(data['id']))
-        #ax[1].scatter(data['time'],depth_normalised_lightcurve_unsubtracted,s=5)
-        #ax[1].set_title("TIC {} - subtracted background".format(data['id']))
-        #plt.title(data['id'])
-        #plt.show()    
-        if len(normalised_lightcurve) == 121:
-            normalised_by_median.append(normalised_lightcurve)
-            normalised_by_depth.append(depth_normalised_lightcurve)
+        if len(depth_normalised_flux) == 121:
+            normalised_by_depth.append(depth_normalised_flux)
             ids.append(obj_id.item())
 
 
-    stacked_median_lcs = np.vstack(normalised_by_median)
     stacked_depth_lcs = np.vstack(normalised_by_depth)
+    #try:
+        #stacked_ids = [id.encode('utf-8') for id in ids]
+    #except:
     stacked_ids = ids
 
     # Create a dictionary to map arrays to IDs
-    id_map = {tuple(array): id for array, id in zip(stacked_median_lcs, stacked_ids)}
-    return stacked_median_lcs, stacked_depth_lcs, stacked_ids, id_map
+    id_map = {id: tuple(array) for array, id in zip(stacked_depth_lcs, stacked_ids)}
 
-def plot_all_arrays(som, bins=np.arange(121),save=args.save):
+    ## save array
+    if args.array_save:
+        np.savez('{}'.format(args.array_save_name),array=stacked_depth_lcs,ids=ids)
+    else:
+        np.savez('som_input_arrays_{}x{}-{}.npz'.format(somshape[0],somshape[1],stacked_depth_lcs.shape[0]),array=stacked_depth_lcs,ids=ids)
+    print("input arrays saved as 'som_input_arrays_{}x{}-{}.npz'".format(somshape[0],somshape[1],stacked_depth_lcs.shape[0]))
+
+    return stacked_depth_lcs, stacked_ids, id_map
+
+def remove_depth_and_normalize(flux):
+    min_flux = np.min(flux)
+    max_flux = np.max(flux)
+    
+    # Remove depth and normalize
+    depth_removed_normalized_lightcurve = (flux - min_flux) / (max_flux - min_flux)
+    
+    return depth_removed_normalized_lightcurve
+
+
+def normalise_depth(flux):
+    median = np.median(flux)
+    #depth_normalised_lightcurve = (flux - median) / median
+    abs_depth = median - np.min(flux)  # Assuming the minimum of the lightcurve is the minimum point
+    depth_normalised_lightcurve = ((flux - median) / abs_depth + 1)
+    return depth_normalised_lightcurve
+
+def plot_all_arrays(som, length,bins=np.arange(121),save=args.save):
     fig, axes = plt.subplots(somshape[0], somshape[1], figsize=(50, 50))
     fig.subplots_adjust(
         wspace=0.4, hspace=0.4
@@ -141,7 +147,7 @@ def plot_all_arrays(som, bins=np.arange(121),save=args.save):
     for x_pixel in range(somshape[0]):
         for y_pixel in range(somshape[1]):
             ax = axes[x_pixel, y_pixel]
-            ax.scatter(bins, som[x_pixel, y_pixel], c="g", s=3)
+            ax.scatter(bins, som[x_pixel, y_pixel], c="g", s=10)
             ax.set_title("Kohonen pixel at [{},{}]".format(x_pixel, y_pixel))
             # ax.text(0, 0.92, '[{},{}]'.format(x_pixel, y_pixel))
 
@@ -150,82 +156,24 @@ def plot_all_arrays(som, bins=np.arange(121),save=args.save):
             os.mkdir("som_plots/")
         else:
             print("Directory already exists, skipping creation.")
-        plt.savefig("som_plots/{}".format(args.output_pixelsave))
-        plt.close()
-
-
-def get_lightcurves(ids,mapped_tuples,pixel, directory,output_save):
-    """
-    This function retrieves lightcurves in the SOM pixels. 
-    
-    :ids: TIC IDs from `stack_npz_files`
-    :mapped_tuples: Obtained from the SOM process, where this is the coordinates of the lightcurve
-    :pixel: desired pixel to retrieve lightcurves
-    :dir: Directory of where original `.npz` files are.
-    
-    outputs:
-        lightcurve plots.
-    
-    pixel has to be in the form of (x,y) coordinates"""
-    df = pd.DataFrame(data=[ids,mapped_tuples]).T
-    df.columns = ['TIC','coords']
-    lightcurves = df.groupby('coords').get_group(pixel).reset_index(drop=True)
-    
-    pdf = plt.PdfPages(output_save)
-
-    for i in lightcurves.TIC:
-        #file_pattern = os.path.join(directory, '**', f'*{number_}*')
-        lc = np.load("som_cutouts_snr6/{}.npz".format(i))
-        plt.subplot(1, 2, 1)
-        plt.title("TIC {}".format(i))
-        median = np.median(lc['flux'])
-        abs_depth = median - np.min(lc['flux'])  # Assuming the minimum of the lightcurve is the minimum point
-        depth_normalised_lightcurve = (lc['flux'] - median) / abs_depth + 1
-        
-        plt.scatter(lc['time'],depth_normalised_lightcurve,s=5)
-        plt.subplot(1, 2, 2)
-        plt.title("TIC {} - Original processed lightcurve".format(i))
-        plt.scatter(lc['time'], lc['flux']/np.nanmedian(lc['flux']), s=5)
-        plot_counter += 1
-
-        # Save the current page with two plots when plot_counter is a multiple of 2
-        if plot_counter % 2 == 0:
-            pdf.savefig(plt.gcf())
-            plt.close()  # Close the current figure
-
-    # If there's an odd number of plots, save the last page
-    if plot_counter % 2 != 0:
-        pdf.savefig(plt.gcf())
-
-    # Close the PDF file
-    pdf.close()
-        
+        plt.savefig("som_plots/{}_{}_{}-iters_pixelview-{}.png".format(somshape[0],somshape[1],args.iterations,length))
+        print("pixel view saved as som_plots/{}_{}_{}-iters_pixelview-{}.png".format(somshape[0],somshape[1],args.iterations,length))
+        plt.close()        
     
 ###### SOM Process ######
 
 print("stacking data")
-
-som_array, som_array_depth, ids, id_map = stack_npz_files(args.path[0])
-somshape = args.grid
+somshape = args.shape
 somshape = tuple(map(int, somshape.strip('()').split(',')))
+som_array, ids, id_map = stack_npz_files(args.path[0])
+
 
 print("files loaded")
-print("starting som")
+print("starting som. SOM will produce a {}x{} grid, with {} iterations".format(somshape[0],somshape[1],args.iterations))
 
+#np.savez('candidate_lightcurves.npz',**id_map)
 
-array_options = {"median":som_array, "depth":som_array_depth}
-
-if args.norm in array_options.keys():
-    trained_data = CreateSOM(array_options[args.norm], somshape=somshape, niter=args.iterations, outfile=args.outfile)
-else:
-    print(args.norm.values())
-    print(array_options[args.norm])
-    print("Invalid method for args.norm {}. Please select one from the options: 'median', or 'depth'".format(args.norm))
-    sys.exit()
-# if args.norm == 'median':
-#     trained_data = CreateSOM(som_array, somshape=somshape, niter=args.iterations, outfile=args.outfile)
-# elif args.norm == 'depth':
-#trained_data = CreateSOM(som_array_depth,somshape=somshape, niter=args.iterations, outfile=args.outfile)
+trained_data = CreateSOM(som_array, somshape=somshape, niter=args.iterations, outfile=args.outfile)
 
 print("training done")
 
@@ -237,9 +185,6 @@ mapped = trained_data(som_array)
 mapped_tuples = [tuple(point) for point in mapped]
 counts = Counter(mapped_tuples)
 count_list = [counts[item] for item in mapped_tuples]
-
-save = args.save
-
 
 som_x = somshape[0]
 som_y = somshape[1]
@@ -256,25 +201,21 @@ if colour == "count":
     plt.ylim([-1, somshape[1]])
     plt.xlabel("Kohonen X axis")
     plt.xlabel("Kohonen Y axis")
-    plt.scatter(x_pos, y_pos, c=count_list)
+    plt.scatter(x_pos, y_pos, c=count_list,s=100)
     plt.colorbar(label="# of lightcurves at pixel")
-    if save:
+    if args.save:
         if not os.path.exists("som_plots/"):
             os.mkdir("som_plots/")
         else:
             print("Directory already exists, skipping creation.")
-        plt.savefig("som_plots/{}".format(args.output_mapsave))
+        plt.savefig("som_plots/{}_{}_{}-iters_map-{}.png".format(somshape[0],somshape[1],args.iterations,som_array.shape[0]))
+        print("SOM grid saved as som_plots/{}_{}_{}-iters_map-{}.png".format(somshape[0],somshape[1],args.iterations,som_array.shape[0]))
     plt.close()
 
 array = trained_data.K
-plot_all_arrays(array, bins=np.arange(241))
+plot_all_arrays(array, length=som_array.shape[0], bins=np.arange(121))
+#df = pd.DataFrame(data=[ids,mapped_tuples]).T
+#df.columns = ['TIC_ID','coords']
+#df['TIC'] = df['TIC_ID'].apply(lambda cell: ' '.join(re.findall(r'\d+', str(cell))))
+#df.to_csv("{}x{}_{}_iters_data.csv".format(somshape[0],somshape[1],args.iterations),index=False)
 print("done")
-response = input("Do you want to view the lightcurves in a specific pixel? y/n")
-
-if response == 'y':
-    pixel = input("which pixel? Please write '(x,y)' with quotation marks included.")
-    pixel = tuple(map(int, pixel.strip('()').split(',')))
-    get_lightcurves(ids,mapped_tuples,pixel,args.path[0],args.output_pixelsave)
-    print("saved as pdf file")
-else:
-    sys.exit()

@@ -27,5 +27,5 @@ for filename in tqdm(os.listdir(folder_path)):
 
 print("Saving to large dataframe now")
 # Save the final concatenated DataFrame to a new file if needed
-final_df.to_csv(f'{args.o}', index=False,sep=',',header=None)
+final_df.to_csv(f'{args.o}', index=False,sep=' ',header=None)
 print(f"Done! Saved as {args.o}")

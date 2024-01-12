@@ -1,4 +1,4 @@
-name: auto_exo
+name: exocomet
 channels:
   - conda-forge
   - defaults

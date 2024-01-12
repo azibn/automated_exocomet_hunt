@@ -216,7 +216,7 @@ def mad_cuts(table,info,clip=3):
     return table
 
 
-def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX', 
+def import_lightcurve(file_path, flux='PDCSAP_FLUX', drop_bad_points=True, 
                       ok_flags=[], pipeline='eleanor-lite', return_type='astropy'):
 
     """
@@ -240,12 +240,16 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
         print("Import failed: file not found")
         return
 
-    objdata = hdulist[0].header
-    scidata = hdulist[1].data
+    try:
+        objdata = hdulist[0].header
+        scidata = hdulist[1].data
+    except:
+        print("file corrupted.")
+        return
 
     pipeline_dict = {
     'eleanor-lite': {
-        'columns': ['TIME', 'CORR_FLUX', 'PCA_FLUX', 'QUALITY', 'FLUX_ERR','FLUX_BKG','X_CENTROID','Y_CENTROID'],
+        'columns': ['TIME', 'CORR_FLUX', 'QUALITY', 'FLUX_ERR','FLUX_BKG','X_CENTROID','Y_CENTROID','PCA_FLUX','RAW_FLUX'],
         'info': ['TIC_ID', 'TMAG', 'SECTOR', 'CAMERA','CCD','RA_OBJ', 'DEC_OBJ']
         # TMAG on eleanor-lite is set as 999 for all lightcurves. Don't know why.
     },
@@ -265,6 +269,10 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
         'columns': ['TIME', 'PDCSAP_FLUX', 'QUALITY','PDCSAP_FLUX_ERR','SAP_BKG'],
         'info': ['TICID','TESSMAG','SECTOR','CAMERA', 'CCD','RA_OBJ','DEC_OBJ']
     },
+    'eleanor-xrp': {
+        'columns': ['time', 'corr_flux', 'quality','flux_err','pca_flux'],
+        'info': ['TIC ID', 'RA', 'DEC', 'TESSMAG', 'Camera','CCD']
+    },
 
 
     }
@@ -279,8 +287,8 @@ def import_lightcurve(file_path, drop_bad_points=True, flux='PDCSAP_FLUX',
     
     hdulist.close()
 
-    # for eleanor lightcurves, perform MAD cuts by default.
-    if (pipeline == 'eleanor-lite'):
+    # this is a bit of a shithousery way to do this, but it works for now.
+    if (pipeline == 'eleanor-lite') & (drop_bad_points == True):
         table = mad_cuts(table,info)
 
     if drop_bad_points:
@@ -361,18 +369,21 @@ def clean_data(table):
     quality = []
     real = []
     flux_error = []
-    flux_bkg = []
     timestep = calculate_timestep(table)
+
+
+    ### this scale factor ensures that you can use any cadence of lightcurves. 48 cadences = 1 day.
     factor = ((1/48)/timestep)
+
     for row in table:
-        ti, fi, qi, fei, fbgi = row
+        ti, fi, qi, fei = row
 
         if len(time) > 0:
             steps = int(round( (ti - time[-1])/timestep * factor)) # (y2-y1)/(x2-x1)
             if steps > 1:
                 fluxstep = (fi - flux[-1])/steps
-                fluxerror_step = (fei - flux_error[-1]/steps)
-                fluxbkg_step = (fei - flux_bkg[-1]/steps)
+                fluxerror_step = (fei - flux_error[-1])/steps
+
                 # For small gaps, pretend interpolated data is real.
                 if steps > 2:
                     set_real=0
@@ -383,7 +394,7 @@ def clean_data(table):
                     time.append(timestep + time[-1])
                     flux.append(fluxstep + flux[-1])
                     flux_error.append(fluxerror_step + flux_error[-1])
-                    flux_bkg.append(fluxbkg_step + flux_bkg[-1])
+
                     quality.append(0)
                     real.append(set_real)
         time.append(ti)
@@ -391,8 +402,8 @@ def clean_data(table):
         quality.append(qi)
         real.append(1)
         flux_error.append(fei)
-        flux_bkg.append(fbgi)
-    return [np.array(x) for x in [time,flux,quality,real,flux_error,flux_bkg]]
+
+    return [np.array(x) for x in [time,flux,quality,real,flux_error]]
 
 
 def normalise_flux(flux):
@@ -463,22 +474,6 @@ def lombscargle_filter(time,flux,real,min_score):
             del ls
     except:
         pass
-
-def lombscargle_plotting(time,flux,real,min_score):
-    time_real = time[real == 1]
-
-    period = time[-1]-time[0] # length of observation (sampling interval)
-    N = len(time)
-    nyquist_period = (2*period)/N
-
-    min_freq = 1/period
-    nyquist_freq = N/(2*period) 
-
-    for _ in range(30):
-        flux_real = flux[real == 1]
-        freq,powers = LombScargle(time_real,flux_real).autopower(method='fast', minimum_frequency=min_freq,maximum_frequency=nyquist_freq,samples_per_peak=10)
-    return freq, powers
-
 
 def test_statistic_array(np.ndarray[np.float64_t,ndim=1] flux, int max_half_width):
     """
@@ -604,33 +599,36 @@ def comet_curve_fit(x,y):
     params,cov = curve_fit(comet_curve,x,y,params_init,bounds=params_bounds)
     return params, cov
 
-def skewed_gaussian_curve_fit(x,y,y_err,width):
+def skewed_gaussian_curve_fit(x, y, y_err, width,gaussian_params):
+    #, gaussian_params):
     """
-    Fits a skewed Gaussian curve to the given data points.
+    Fits a skewed Gaussian curve to the given data points based on parameters from a Gaussian fit.
 
     Parameters:
         x (array-like): time.
-        y (array-like): lightcurve flux.
-        y_err (array-like): Associated errors for lightcurve flux.
+        y (array-like): light curve flux.
+        y_err (array-like): Associated errors for light curve flux.
         width: duration of transit from the T-statistic.
+        gaussian_params (list): Parameters from the Gaussian fit [A, t0, sigma]. This ensures that the symmetric fit is the "worst case scenario".
 
     Returns:
         tuple: A tuple containing two elements:
             - params (array-like): The optimized parameters of the skewed Gaussian curve fit.
             - cov (ndarray): The estimated covariance of the optimized parameters.
     """
-    
-    i = np.argmax(y)
-    #width = x[-1]-x[0]
-    
-    ### params initialisation for skewness, time, mean and sigma
-    # amplitude, t0, sigma, skewness
-    params_init = [y[i],x[i],width,0]
-    
-    params_bounds=[[0,x[0],0,-30], [np.inf,x[-1],np.inf,30]]
-    params,cov = curve_fit(skewed_gaussian,x,y,p0=params_init,sigma=y_err,bounds=params_bounds)
-    
-    return params, cov 
+    # Extract parameters from the Gaussian fit
+    A_gaussian, t0_gaussian, sigma_gaussian = gaussian_params
+
+    # Use Gaussian parameters as initial values for the skewed Gaussian fit
+    params_init = [A_gaussian, t0_gaussian, sigma_gaussian, 0.0001]  # Assuming initial skewness is 0
+    #params_init = [y[i],x[i],width/3,width/3,0]
+    # Define bounds for the parameters
+    bounds = ([0, x[0], 0, -30], [np.inf, x[-1], np.inf, 30])
+
+    # Perform skewed Gaussian fit using initial parameters
+    params, cov = curve_fit(skewed_gaussian, x, y, sigma=y_err,p0=params_init, bounds=bounds) #sigma=y_err,
+
+    return params, cov
 
 def skewed_gaussian(x, A, t0, sigma, alpha):
     """
@@ -711,7 +709,7 @@ def cutout(m,n,table,n_m_bg_start=3,n_m_bg_scale_factor=1):
 
     return table[cutout_before:cutout_after]
 
-def calc_shape(m,n,time,flux,quality,real,flux_error,width,flux_bkg,n_m_bg_start=3,n_m_bg_scale_factor=1):
+def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=3,n_m_bg_scale_factor=1):
     """Fit both symmetric and comet-like transit profiles and compare fit.
 
     original time: time before interpolation step
@@ -776,7 +774,6 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,width,flux_bkg,n_m_bg_start
         x = flux[cutout_before:cutout_after]
         q = quality[cutout_before:cutout_after]
         fe = flux_error[cutout_before:cutout_after]
-        fbg = flux_bkg[cutout_before:cutout_after]
         
         bg_before = np.mean(x[:int(m/4)])
         bg_time_before = np.mean(t[:int(m/4)])
@@ -788,9 +785,11 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,width,flux_bkg,n_m_bg_start
         x = x - background_level
 
         try:
-            params1, pcov1 = single_gaussian_curve_fit(t,-x)
-            params2, pcov2 = comet_curve_fit(t,-x)
-            params3, pcov3 = skewed_gaussian_curve_fit(t,-x,fe,width)
+             # Perform Gaussian fitting
+            params1, pcov1 = single_gaussian_curve_fit(t, -x)
+            params2, pcov2 = comet_curve_fit(t, -x)
+            params3, pcov3 = skewed_gaussian_curve_fit(t, -x, fe, width, params1)
+
         except:
             return -3,-3,-3,-3,-3,-3,-3, -3
 
@@ -807,7 +806,7 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,width,flux_bkg,n_m_bg_start
             # params3[2] is the sigma/width of the gaussian...
             # params3[3] is the skewness...
 
-            return scores[0]/scores[1], params3[0], params3[2], params3[3], skewness_error, depth, [t,x,q,fe,fbg, background_level], [fit1,fit2,fit3]
+            return scores[0]/scores[1], params3[0], params3[2], params3[3], skewness_error, depth, [t,x,q,fe, background_level], [fit1,fit2,fit3]
         
         else:
 
@@ -895,9 +894,7 @@ def smoothing(table,method,window_length=2.5,power=0.08):
         return flux_ls, periodicnoise_ls # returns one-step Lomb Scargle
     elif method==None:
         return table[table.colnames[1]], np.zeros(len(table[table.colnames[1]])) # the "trend flux" is just an array of zeros
-    else:
-        print("method type not specified. Try again")
-        return
+ 
 
 def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     masked_flux = np.copy(flux)                    
@@ -910,7 +907,7 @@ def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     final_flux *= real
     return final_flux, periodicnoise_ls2, original_masked_flux
 
-def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_cutouts_directory_name='som_cutouts',make_plots=False,twostep=False): 
+def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_cutouts_directory_name='som_cutouts',make_plots=False,twostep=False,plots_dir='plots/'): 
     """
     
     Function: The main bulk of the search algorithm.
@@ -924,6 +921,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
     :som_cutouts_directory_name: Name of directory to save cutouts in.
     :make_plots: Creating plots of lightcurve (pre and post-cleaning), the T-statistic of the lightcurve, its position on the SNR/alpha distribution, 
       and a zoomed-in cut for potential candidates.
+    :plots_dir: the directory to save the plots in. Default is 'plots/'.
     :twostep: Perform two-step smoothing (compatible with Fourier/Lomb-Scargle methods only). Default is False.
 
     Returns:
@@ -947,17 +945,20 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
         
         # smoothing operation and normalisation of flux
         ## note: since Wotan performs time-windowed smoothing without the need for interpolation, `clean_data` is placed after the smoothing step to create interpolated points at data gaps (mostly for visual benefit). 
-       
         wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
         if method in wotan_methods:
-            flat_flux, trend_flux = smoothing(table, method=method)
-            table = Table([table[table.colnames[0]], flat_flux - np.ones(len(flat_flux)), table[table.colnames[2]], table[table.colnames[3]]/np.nanmedian(table[table.colnames[1]]),table[table.colnames[4]]],names=('time','flux','quality','flux_error','flux_bkg'))
-            _ , nonnormalised_flux, _, _, _, _ = clean_data(original_table)
-            t, flux, quality, real, flux_error, flux_bkg = clean_data(table)
+            flat_flux, trend_flux = smoothing(table, method='median')
+            table = Table([table[table.colnames[0]], flat_flux - np.ones(len(flat_flux)), table[table.colnames[2]], table[table.colnames[3]]/np.nanmedian(table[table.colnames[1]])],names=('time','flux','quality','flux_error'))
+            cleaning_ori_table = Table(original_table[original_table.colnames[:4]])
+            _ , nonnormalised_flux, _, _, _ = clean_data(cleaning_ori_table)
+            t, flux, quality, real, flux_error = clean_data(table)
+
+            ## the interpolated flux is the one that is modeled, but for T-statistic, interpolated points are set to 0 to "flatten" the data gap and remove that as an FP.
+            flux_calc_shape = flux.copy()
             flux *= real
 
         elif method in ['lomb-scargle', 'fourier']:
-            t, flux, quality, real, flux_error, flux_bkg = clean_data(table)
+            t, flux, quality, real, flux_error = clean_data(table)
             flux = normalise_flux(flux)
             flux_ls = np.copy(flux)
             lombscargle_filter(t, flux_ls, real, 0.08)
@@ -966,13 +967,9 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             flux = flux_ls
 
         else:
-            t, flux, quality, real, flux_error, flux_bkg = clean_data(table)
+            t, flux, quality, real, flux_error, _ = clean_data(table)
             flux = normalise_flux(flux)
             flux *= real
-
-        #assert not (np.isnan(t).any() or np.isinf(t).any()), "Time array contains NaN or inf values"
-        #assert not (np.isnan(flux).any() or np.isinf(flux).any()), "Flux array contains NaN or inf values"
-
 
         ## preparing processing
         timestep = calculate_timestep(table)
@@ -998,21 +995,21 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             m,n,T2,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts = run_test_statistic(final_flux2, factor, timestep,t)
 
 
-        asym, amplitude, width, skewness, skewness_error, depth, info, fits = calc_shape(m,n,t,flux,quality,real,flux_error,width=minT_duration,flux_bkg=flux_bkg)
+        asym, amplitude, width, skewness, skewness_error, depth, info, fits = calc_shape(m,n,t,flux_calc_shape,quality,real,flux_error,width=minT_duration)
 
         ### preparing some variables for statistics ###
         try:
             gauss_fit = fits[0]
             skewed_fit = fits[2]
-    
-        except:
-            pass
-  
-        try:
+
+
             cutout_flux = info[1] # check why this raises errors sometimes
             cutout_flux_error = info[3]
+        
 
+            # replace the transit from flux with flux_calc_shape only
 
+        
             ### chi square for the two models ###
             chisq_fit1 = chisquare(cutout_flux,gauss_fit,cutout_flux_error)
             chisq_fit3 = chisquare(cutout_flux,skewed_fit,cutout_flux_error)
@@ -1020,7 +1017,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             ### reduced chi square for the two models ### 
             reduced_chisq_fit1 = reduced_chisquare(cutout_flux,gauss_fit,4,cutout_flux_error)
             reduced_chisq_fit3 = reduced_chisquare(cutout_flux,skewed_fit,4,cutout_flux_error)
-            
+
             ### rmse and mae for both models ###
             rmse_fit1 = rmse(cutout_flux,gauss_fit)
             mae_fit1 = mae(cutout_flux,gauss_fit)
@@ -1028,9 +1025,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             rmse_fit3 = rmse(cutout_flux,skewed_fit)
             mae_fit3 = mae(cutout_flux,skewed_fit)
         except:
-            cutout_flux = None # check why this raises errors sometimes
-            cutout_flux_error = None
-            chisq_fit1 = chisq_fit3 = reduced_chisq_fit1 = reduced_chisq_fit3 = rmse_fit1 = rmse_fit3 = mae_fit1 = mae_fit3 = 0.0
+            chisq_fit1 = chisq_fit3 = reduced_chisq_fit1 = reduced_chisq_fit3 = rmse_fit1 = rmse_fit3 = mae_fit1 = mae_fit3 = np.nan
 
         ### sorting out the lightcurves into the initial groups ### 
         classification = classify(m,n,real,asym)
@@ -1044,6 +1039,9 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
                 reduced_chisq_fit1, reduced_chisq_fit3, rmse_fit1, rmse_fit3, mae_fit1, mae_fit3]])+\
             ' '+classification
         
+        # original_median_flux
+
+
         ## little fix for string splitting between SPOC lightcurves and XRP ones
         result = search.split()
         midtransit_time = float(result[4])
@@ -1051,11 +1049,10 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
         if 'TIC' in search:
             final_result = [result[i] + ' ' + result[i+1] if result[i] == 'TIC' else result[i] for i in range(len(result)) if i+1 < len(result)]
         else:
-            final_result = [s for s in search.split() if s != 'TIC']
+            final_result = [val for val in search.split() if val != 'TIC']
 
-        if make_plots:
-            plt.rc('font', family='serif')
-        
+        final_result.append(lc_info[2])
+        if make_plots:  
             try:
                 os.makedirs("plots") # make directory plot if it doesn't exist
             except FileExistsError:
@@ -1066,29 +1063,31 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
                 check = f.read()
                 columns = json.loads(check)
                 columns = columns['column_names']
+                columns.append('Sector')
             
-            fig = plt.figure(figsize=(20,10)) ## change at top to plt.rcParams["figure.figsize"] = (10,6)
+            
+            ## PLOTTING ##
+            fig = plt.figure(figsize=(25,12)) ## change at top to plt.rcParams["figure.figsize"] = (10,6)
 
             ### table of results ###
-            gs1 = fig.add_gridspec(10,3 ,hspace=0.4,wspace=0.2)
-            ax0 = plt.subplot(gs1[0:1,:]) 
+            gs = fig.add_gridspec(23,3 ,hspace=1.5,wspace=0.2)
+            ax0 = plt.subplot(gs[0:1,:]) 
             ax0.axis('off')
-
-            search_table = ax0.table(cellText=[final_result[1:13]], loc='center', colLabels=columns[1:13])
+            search_table = ax0.table(cellText=[final_result[1:14]], loc='center', colLabels=columns[1:14])
             search_table.auto_set_font_size(False)
             search_table.set_fontsize(10)
-            ax00 = plt.subplot(gs1[1:2,:]) 
-            ax0.axis('off')
-            search2 = ax00.table(cellText=[final_result[12:]], loc='center', colLabels=columns[12:])
+            ax00 = plt.subplot(gs[1:2,:]) 
+            ax00.axis('off')
+            search2 = ax00.table(cellText=[final_result[13:]], loc='center', colLabels=columns[13:])
             search2.auto_set_font_size(False)
             search2.set_fontsize(10)
             ax00.axis('off')
 
 
             ### flux and the smoothing function ###
-            ax1 = plt.subplot(gs1[2:5,:2]) 
-            ax1.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[original_table.colnames[1]]), s=5,alpha=0.5,zorder=1,label='original lightcurve')
-            ax1.scatter(t, flux,s=5,label='smoothened flux',alpha=0.9,zorder=3)
+            ax1 = plt.subplot(gs[2:5,:2]) 
+            ax1.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[original_table.colnames[1]]), s=10,alpha=0.5,zorder=1,label='original lightcurve')
+            ax1.scatter(t[real==1], flux[real==1],label='smoothened flux',alpha=0.9,zorder=3,s=10)
             try:
                 ax1.plot(original_table[original_table.colnames[0]],normalise_flux(trend_flux),label='trend',color='black',linewidth=2,zorder=5)
             except:
@@ -1096,30 +1095,32 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
 
             ax1.set_xlim(np.min(t),np.max(t))
             ax1.set_ylabel("Normalised flux")
-            ax1.legend(loc="lower left")
+            ax1.legend(loc="center")
             plt.setp(ax1.get_xticklabels(), visible=False)
 
             ### transit cutout ###
-            ax2 = plt.subplot(gs1[2:6,2:]) 
-            cutout_t = info[0]
-            cutout_x = info[1]
-            cutout_bkg = info[-1]
+            ax2 = plt.subplot(gs[2:10,2:]) 
+            try:
+                cutout_t = info[0]
+                cutout_x = info[1]
+            except:
+                pass
             try:
                 gauss_fit = fits[0]
                 comet_fit = fits[1]
                 skew_fit = fits[2]
                    
                 ax2.plot(cutout_t, cutout_x,label='data') # flux
-                ax2.plot(cutout_t,gauss_fit,label='gaussian model') # gauss fit
-                ax2.plot(cutout_t,skew_fit,label='skewed gauss model',color='black') # skewed gaussian
-                ax2.plot(cutout_t,comet_fit,label='comet model') # comet fit    
+                ax2.plot(cutout_t,gauss_fit,label='gaussian model',color='orange',zorder=4) # gauss fit
+                ax2.plot(cutout_t,skew_fit,label='skewed gauss model',color='black',zorder=3) # skewed gaussian
+                #ax2.plot(cutout_t,comet_fit,label='comet model',color='lime',linestyle='-',zorder=1) # comet fit    
                 ax2.set_xlabel("Time - 2457000 (BTJD Days)")
                 ax2.legend(loc="lower left")
             except:
                 pass
 
             ###### T-statistic #######
-            ax3 = plt.subplot(gs1[5:7, :2])
+            ax3 = plt.subplot(gs[5:8, :2])
             im = ax3.imshow(
                 T1,
                 origin="bottom",
@@ -1127,30 +1128,60 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
                 aspect="auto",
                 cmap="rainbow",
             )
-            ax3.set_xlabel("Time - 2457000 (BTJD Days)")
-            ax3.set_ylabel("Transit width in days") 
+            #ax3.set_xlabel("Time - 2457000 (BTJD Days)")
+            ax3.set_ylabel("Transit width (days)") 
+            plt.setp(ax3.get_xticklabels(), visible=False) 
 
-            #cbax = plt.subplot(gs1[8:9, :2])
+            #cbax = plt.subplot(gs[8:9, :2])
             #cb = Colorbar(ax=cbax, mappable=im, orientation='horizontal', ticklocation='bottom')#et_x(-0.075)
             
-            ax6 = plt.subplot(gs1[7:9, :2])
-            ax6.scatter(original_table[original_table.colnames[0]],original_table[original_table.colnames[4]],s=10)
+            ## FLUX BACKGROUND PLOT ##
+            ### the processed time array is not used for plotting purposes for background plots as they are unequal lengths to the original time array. 
+            ### and we do not "clean" the background flux. This does not make a difference visually; just a coding explanation as to why we use this time value.
+            ax4 = plt.subplot(gs[8:11, :2],sharex=ax1)
+
+            bkg = original_table['FLUX_BKG']
+            #mad = np.nanmedian(np.abs(norm - np.nanmedian(norm)))
+            original_time = original_table[original_table.colnames[0]]
+            ax4.scatter(original_time,bkg,s=10)
+            #ax4.scatter(norm,norm[norm.colnames[4]],s=10)
+            #ax4.axhline(mad,label = "mad",color='black',linewidth=5)
+            #ax4.axhline(3*mad,label="3 x mad",color='red',linewidth=5)
+            ax4.set_ylabel('FLUX_BKG')
+            ax4.set_xlim(ax1.get_xlim())
+            plt.setp(ax4.get_xticklabels(), visible=False)
+            ax5 = plt.subplot(gs[11:14, :2],sharex=ax1)
+            x_cen = original_table['X_CENTROID']
+            ax5.scatter(original_time, x_cen, s=10)
+            ax5.set_ylabel('X_CEN')
+            ax5.set_xlim(ax1.get_xlim())
+            plt.setp(ax5.get_xticklabels(), visible=False)
+
+            ax6 = plt.subplot(gs[14:17, :2])
+            y_cen = original_table['Y_CENTROID']
+            ax6.scatter(original_time, y_cen, s=10)
+            ax6.set_ylabel('Y_CEN')
+            ax6.tick_params(axis='x', labelbottom=True) 
+            ax6.set_xlim(ax1.get_xlim())
+            ax6.set_xticklabels([])
+
+
+            ax7 = plt.subplot(gs[17:, :],sharex=ax1)
+
+            ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table['CORR_FLUX']), s=10,alpha=0.5,zorder=1,label='corrected flux')
+            ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table['PCA_FLUX'])-0.025, s=10,alpha=0.5,zorder=1,label='pca flux')
+            ax7.scatter(t[real==1], flux[real==1]-0.05,label='smoothened flux',alpha=0.9,zorder=3,s=10)
+            ax7.legend()
+            #ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[original_table.colnames[-1]]-0.01), s=10,alpha=0.5,zorder=1,label='unselected lightcurve pipeline')
+
             
+
             try:
                 obj_id = lc_info[0]
             except:
                 obj_id = input("object id: ")
-
-            test = cutout(m,n,table)
-            ax5 = plt.subplot(gs1[6:9,2:])
-            #ax5.scatter(df.asym_score,abs(df['signal/noise']),alpha=0.3,s=2)
-            ax5.scatter(cutout_t,cutout_bkg,color='black',s=5)
-            ax5.set_xlabel("time")
-            ax5.set_ylabel("Background Flux")
-     
-
             ## projection in the sky
-            #ax6 = plt.subplot(gs1[16:,:3],projection="aitoff")
+            #ax6 = plt.subplot(gs[16:,:3],projection="aitoff")
             #ra = info[-2] * u.degree
             #dec = info[-1] * u.degree
             #d = SkyCoord(ra=ra, dec=dec, frame='icrs')
@@ -1160,33 +1191,46 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             #ax6.plot(ra, dec, 'o', alpha=2)
 
             ## HR Diagram
-            #ax7 = plt.subplot(gs1[16:,3:])
+            #ax7 = plt.subplot(gs[16:,3:])
             #ax7.set_title("HR Diagram")
 
             ### finding information from simbad ###
-            #customSimbad = Simbad()
-            #customSimbad.add_votable_fields("sptype","parallax")
+            customSimbad = Simbad()
+            customSimbad.add_votable_fields("sptype","parallax")
 
-            #obj_id = "TIC" + str(obj_id)
+            obj_id = "TIC" + str(obj_id)
 
-            #try:
-            #    obj = customSimbad.query_object(obj_id).to_pandas().T
-            #    obj_name, obj_sptype, obj_parallax = obj.loc['MAIN_ID'][0], obj.loc['SP_TYPE'][0],obj.loc['PLX_VALUE'][0]
-            #    fig.suptitle(f" {obj_id}, {obj_name}, Spectral Type {obj_sptype}, Parallax {obj_parallax} (mas)", fontsize = 16,y=0.93)     
-            #    fig.tight_layout()
-            #except UnboundLocalError:
-            #    print("object ID not found.")
-            #    fig.suptitle("ID not identified.",fontsize = 16,y=0.93)
-            #    pass
-            #except AttributeError:
-            #    pass
-            fig.savefig(f'plots/{obj_id}.png',dpi=300) 
+            try:
+                obj = customSimbad.query_object(obj_id).to_pandas().T
+                obj_name, obj_sptype, obj_parallax = obj.loc['MAIN_ID'][0], obj.loc['SP_TYPE'][0],obj.loc['PLX_VALUE'][0]
+                fig.suptitle(f" {obj_id}, {obj_name}, Spectral Type {obj_sptype}, Parallax {obj_parallax} (mas)", fontsize = 16,y=0.93)     
+                fig.tight_layout()
+            except UnboundLocalError:
+                print("object ID not found.")
+                fig.suptitle("ID not identified.",fontsize = 16,y=0.93)
+                pass
+            except AttributeError:
+                pass
 
+            base_filename = f'plots/{obj_id}.png'
 
-            plt.tight_layout()
+            if not os.path.exists(base_filename):
+                fig.savefig(f'plots/{obj_id}.png',dpi=300) 
+            else:
+                # If the base filename exists, find a unique filename
+                suffix = 1
+                while True:
+                    unique_filename = f'plots/{obj_id}_{suffix}.png'
+                    if not os.path.exists(unique_filename):
+                        fig.savefig(unique_filename,dpi=300)
+                        break
+                    suffix += 1
+            
+
 
             plt.show()
             plt.close()
+
     else:
         search = file_basename+' 0 0 0 0 0 0 0 0 notEnoughData'
 
@@ -1197,9 +1241,9 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             pass
         #data_to_cut = pd.DataFrame(data=[original_table[original_table.colnames[0]],original_table[original_table.colnames[1]],original_table[original_table.colnames[2]],original_table[original_table.colnames[3]]]).T # this is normalised, need the original flux
         data_to_cut = pd.DataFrame(data=[t, nonnormalised_flux, quality, flux_error]).T 
+
         data_to_cut.columns = ['time','flux','quality','flux_err']
         som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=60) # 2 day window either side 
-
         #x1 = np.mean(som_lightcurve.flux[0:12])
         #x2 = np.mean(som_lightcurve.flux[-13:-1]) # the last 12 points
 
@@ -1212,20 +1256,20 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
 
 
         try:
-            save_unique_file(obj_id, som_lightcurve,som_cutouts_directory_name)
+            save_unique_file(lc_info, som_lightcurve,som_cutouts_directory_name)
         except TypeError:
             obj_id = input("object id: ")
-            save_unique_file(obj_id, som_lightcurve,som_cutouts_directory_name)
+            save_unique_file(lc_info, som_lightcurve,som_cutouts_directory_name)
 
             
         del original_table
     if method == None:
-        return search, [t, flux, quality, flux_bkg]
+        return search, [t, flux, quality]
     else:
-        return search, [t, flux, normalise_flux(trend_flux), quality, flux_bkg]
+        return search, [t, flux, normalise_flux(trend_flux), quality]
 
 
-def folders_in(path_to_parent):
+def _folders_in(path_to_parent):
     """""
     Yields the paths of subdirectories within a given directory.
 
@@ -1261,18 +1305,21 @@ def run_test_statistic(flux, factor, timestep, t):
         return m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts
 
 
-def save_unique_file(obj_id, som_lightcurve,som_cutouts_directory_name='som_cutouts'):
+def save_unique_file(lc_info, som_lightcurve,som_cutouts_directory_name='som_cutouts'):
+    obj_id = lc_info[0]
+    sector = lc_info[2]
     base_filename = f'{som_cutouts_directory_name}/{obj_id}.npz'
     
     # Check if the base filename exists
     if not os.path.exists(base_filename):
-        np.savez(base_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, id=obj_id)
+        np.savez(base_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, flux_err=som_lightcurve.flux_err, id=obj_id, sector=sector)
     else:
         # If the base filename exists, find a unique filename
         suffix = 1
         while True:
             unique_filename = f'{som_cutouts_directory_name}/{obj_id}_{suffix}.npz'
             if not os.path.exists(unique_filename):
-                np.savez(unique_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, id=obj_id)
+                np.savez(unique_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, flux_err=som_lightcurve.flux_err, id=obj_id, sector=sector)
                 break
             suffix += 1
+

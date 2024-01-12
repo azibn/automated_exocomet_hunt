@@ -1,36 +1,53 @@
 import os
-import sys
 import argparse
 import glob
-from analysis_tools_cython import import_XRPlightcurve
 import multiprocessing
+import pandas as pd
+from astropy.io import fits
+from tqdm import tqdm
+import time
+import sys
 
 parser = argparse.ArgumentParser(
-    description="A script to delete files that are fainter than our cutoff magnitude in the 2_min_cadences_folder"
+    description="A script to delete files that are fainter than our cutoff magnitude."
 )
-parser.add_argument(help="target directory", default=".", nargs="+", dest="path")
-parser.add_argument("-s", help="TESS sector", dest="s", type=int)
+
 
 args = parser.parse_args()
 
 paths = []
-for path in args.path:
-    paths.append(os.path.expanduser(path))
 
+def read_lightcurve(file):
+    #print(f)
+    hdul = fits.open(file)
+    ticid = hdul[0].header["TIC_ID"]
+    hdul.close()
+    
+    mag = data[data.TIC_ID == ticid]["Magnitude"].values[0]
 
-def read_lightcurve(f, sector=args.s):
-    data, lc_info = import_XRPlightcurve(f, sector)
-    print("TIC" + str(lc_info[0]))
-    if lc_info[3] > 13:
-        os.remove(f)
-        print(f"file {lc_info[0]} deleted, magnitude {lc_info[3]}")
-
+    if mag > 13:
+        os.remove(file)
+        print(
+            f"file {ticid} deleted, magnitude {mag}. Subdirectory {os.path.dirname(file)} deleted."
+        )
+        os.rmdir(os.path.dirname(file))
+    else:
+        print(f"TIC {ticid}, magnitude {mag}")
 
 if __name__ == "__main__":
+    print("reading data")
+    data = pd.read_csv("s9.csv")
+    mag = data['Magnitude']
+    files = data['new_path'].to_list()
+    print("file uploaded")
     num_processes = multiprocessing.cpu_count() - 1
-    for path in paths:
-        # print(path)
-        # read_lightcurve(path,args.s)
-        pool = multiprocessing.Pool(processes=num_processes)
-        files = glob.glob(os.path.join(path, "*.pkl"))
-        pool.map(read_lightcurve, files)
+    
+    pool = multiprocessing.Pool(processes=num_processes)
+    print("number of threads used: " + str(num_processes))
+
+    pool.map(read_lightcurve, files)
+        #read_lightcurve(i)
+
+    pool.close()
+    pool.join()
+

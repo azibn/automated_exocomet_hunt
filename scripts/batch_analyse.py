@@ -13,7 +13,7 @@ from analysis_tools_cython import (
     import_XRPlightcurve,
     import_lightcurve,
     processing,
-    folders_in,
+    _folders_in,
 )
 from tqdm import tqdm
 import time
@@ -94,6 +94,12 @@ parser.add_argument(
     dest="som",
 )
 
+parser.add_argument(
+    "-plots_dir",
+    help="Directory to save plots in. Default is '/plots'.",
+    default="'/plots.'",
+    dest="plots_dir",
+)
 
 
 # Get directories from command line arguments.
@@ -148,7 +154,11 @@ def run_lc(f_path):
 
         else:
             table, lc_info = import_lightcurve(f_path, flux=args.f, pipeline=args.pipeline)
-            table = table[table.colnames[:5]]
+            if (args.pipeline == 'eleanor-lite') and ('pca' in args.f.lower()):
+                table = table['TIME','PCA_FLUX','QUALITY','FLUX_ERR','FLUX_BKG','X_CENTROID','Y_CENTROID','CORR_FLUX']
+            else:
+                table = table[table.colnames[:5]]
+            
         result_str, save_data = processing(
             table,
             f_path,
@@ -157,7 +167,19 @@ def run_lc(f_path):
             make_plots=args.p,
             twostep=args.step,
             som_cutouts=args.som,
+            plots_dir=args.plots_dir,
         )
+
+        if args.metadata:
+            lc_info = " ".join([str(i) for i in lc_info])
+
+            os.makedirs("metadata", exist_ok=True)
+
+            with open(
+                os.path.join("metadata/", f"s{sector}.txt"), "a"
+            ) as out_file2:
+                out_file2.write(f + " " + lc_info + " " + "\n")
+
 
         if args.n:
             # print result_str in terminal
@@ -166,8 +188,6 @@ def run_lc(f_path):
         
         # make directory for output file.
         os.makedirs("outputs", exist_ok=True)
-
-        lc_info = " ".join([str(i) for i in lc_info])
 
         lock.acquire()
         with open(os.path.join("outputs", args.of), "a") as out_file:
@@ -206,21 +226,33 @@ def run_lc(f_path):
 if __name__ == "__main__":
     if ("sector" in args.path[0]) & (args.path[0].endswith('.pkl')):
         sector = int(os.path.split(args.path[0])[0].split("sector")[1].split("_")[1])
-        print(f"sector {sector}")
-    else:
+        print(f"Processing Sector {sector}")
+    elif args.metadata:
+        print("Saving lightcurve metadata")
         sector = input("Sector? ")
+
+
+    #else:
+    #    sector = input("Sector? ")
+
+    if (args.pipeline == 'eleanor-lite') and ('pca' in args.f.lower()):
+        print(f"using PCA FLUX from {args.pipeline}")
+    else:
+        print(f"using {args.f} from {args.pipeline}")
 
     pool = multiprocessing.Pool(processes=args.threads)
     
+
+
     for path in paths:
         if not os.path.isdir(path):
-            if os.path.isfile(path) & path.endswith(".fits"):
+            if os.path.isfile(path) and path.endswith("fits"):
                 run_lc(path)
 
                 sys.exit()
-            elif path.endswith(".txt"):
+            elif path.endswith(".txt") or path.endswith(".csv"):
                 "processes a list of TIC IDs"
-                print("processing txt file")
+                print("processing file")
                 with open(path, "r") as file:
                     files = [line.strip() for line in file.readlines()]
                 pool.map(run_lc, files)
@@ -229,9 +261,8 @@ if __name__ == "__main__":
 
         # if we are in the lowest subdirectory, perform glob this way.
 
-        if not list(folders_in(path)):
+        if not list(_folders_in(path)):
             print("this is the lowest subdirectory. running the search...")
-
             # works for both Kepler and TESS fits files.
             fits = glob.glob(os.path.join(path, "*lc.fits"))
             pkl = glob.glob(os.path.join(path, "*.pkl"))

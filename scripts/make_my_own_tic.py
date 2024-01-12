@@ -38,7 +38,7 @@ def process_directory(directory, output_file):
 
 if __name__ == "__main__":
     # Directory containing your files
-    directory = f"/storage/astro2/phrdhx/eleanor-lite/s00{args.sector}"
+    directory = f"/storage/astro2/phrdhx/eleanor-lite-project-v2/s00{args.sector}"
     # Name of the text file to which 16-digit strings will be appended
     output_file = f"tic_project/s{args.sector}-eleanor-lite-project.txt"
 

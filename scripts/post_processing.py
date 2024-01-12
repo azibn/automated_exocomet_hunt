@@ -18,7 +18,11 @@ def get_output(file_path, include_stats=True):
     if isinstance(file_path, list):
         df = pd.DataFrame(data=file_path)
     elif file_path.endswith(".txt"):
-        df = pd.read_csv(file_path, sep=" ", header=None)
+        try:
+            df = pd.read_csv(file_path, header=None, sep= " ")
+        except ValueError:
+            df = pd.read_csv(file_path, header=None)
+
 
         ### column names ###
     with open("colnames.json", "r", encoding="utf-8") as f:

@@ -37,8 +37,9 @@ def create_som_cutout_test(table, min_T: float, half_cutout_length=120):
     if target_min_index < 0 or target_max_index >= len(time_values):
         # Extrapolation is required
 
-        # Interpolate the existing data
-        interpolator = interp1d(time_values, table["flux"].values, kind='linear',fill_value="extrapolate")
+        # Interpolate the existing data for flux and flux_err
+        interpolator_flux = interp1d(time_values, table["flux"].values, kind='linear', fill_value="extrapolate")
+        interpolator_flux_err = interp1d(time_values, table["flux_err"].values, kind='linear', fill_value="extrapolate")
 
         # Generate the extrapolated time values
         cadence_duration = time_values[1] - time_values[0]
@@ -48,8 +49,9 @@ def create_som_cutout_test(table, min_T: float, half_cutout_length=120):
             2 * half_cutout_length + 1,
         )
 
-        # Interpolate the extrapolated flux values
-        extrapolated_flux = interpolator(extrapolated_times)
+        # Interpolate the extrapolated flux and flux_err values
+        extrapolated_flux = interpolator_flux(extrapolated_times)
+        extrapolated_flux_err = interpolator_flux_err(extrapolated_times)
 
         extrapolated_mask = np.logical_or(
             extrapolated_times < min_time, extrapolated_times > max_time
@@ -57,11 +59,17 @@ def create_som_cutout_test(table, min_T: float, half_cutout_length=120):
 
         # Assign extrapolated points with the median of the cutout
         median_flux = np.median(table["flux"].values)
+        median_flux_err = np.median(table["flux_err"].values)
+
         extrapolated_flux[extrapolated_mask] = median_flux
-        
+        extrapolated_flux_err[extrapolated_mask] = median_flux_err
 
         # Create a new DataFrame with the extrapolated data
-        extrapolated_table = pd.DataFrame({'time': extrapolated_times, 'flux': extrapolated_flux})
+        extrapolated_table = pd.DataFrame({
+            'time': extrapolated_times,
+            'flux': extrapolated_flux,
+            'flux_err': extrapolated_flux_err
+        })
 
         # Extract the cutout around the min_T value
         cutout = extrapolated_table.iloc[
@@ -75,7 +83,5 @@ def create_som_cutout_test(table, min_T: float, half_cutout_length=120):
     else:
         # No extrapolation needed, extract the cutout directly
         cutout = table.iloc[target_min_index : target_max_index + 1]
-
-    plt.plot(cutout["time"], cutout["flux"] )
 
     return cutout

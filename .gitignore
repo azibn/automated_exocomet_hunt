@@ -13,11 +13,13 @@ archive_analyse.sh
 #notebooks/
 
 # Data files
+metadata/
 eb_cat.txt
 *.csv
 tic*.txt
 catalog_v6.txt
 colnames.json
+combined_dataframe*
 combined_dataframe_v2.txt
 combined_dataframe_xrp.txt
 eleanor-lite-combined-v2.txt
@@ -77,3 +79,28 @@ maxsector.py
 ir_plots/
 ir_plotsv2/
 gif/
+
+
+bad_candidates.txt
+bad_candidates_eleanor-lite.txt
+candidates.txt
+complete-plots/
+do-the-fluxes-exist.ipynb
+eleanor-lite-combined-v3.txt
+eleanor-lite_combined-corrflux.txt
+eleanor-lite_combined_pcaflux.txt
+figs/
+hlsp_gsfc-eleanor-lite_tess_ffi_s0006-0000000270577175_tess_v1.0_lc.fits
+metadata-combined.txt
+mixed_plots/
+ruled-out-candidates.txt
+scripts/Interactive-1.ipynb
+scripts/betapic.pkl
+scripts/betapic_results.pkl
+scripts/models.py
+scripts/pipeline-crossmatch.py
+scripts/run_tpfplotter.py
+som-files/
+tpfplots/
+tpfplotter/
+unsure-plots/
