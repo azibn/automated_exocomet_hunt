@@ -1,117 +1,78 @@
-# Build files
-
-#analysis_tools_cython.c*
-build
-.nfs*
+# IDE and Editor files
 .vscode/
+.idea/
+*.swp
+
+# System files
+.DS_Store
+.nfs*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Build files
+build/
 bin/micromamba
 
-# old Kepler files
-archive_analyse.sh
-
-# Jupyter notebooks
-#notebooks/
-
-# Data files
-metadata/
-eb_cat.txt
+# Data files and folders
 *.csv
-tic*.txt
-catalog_v6.txt
-colnames.json
-combined_dataframe*
-combined_dataframe_v2.txt
-combined_dataframe_xrp.txt
-eleanor-lite-combined-v2.txt
-eleanor-lite-combined.txt
-kohonen_layers.png
-kohonen_pixels.png
-scripts/kohonen_layers.png
-scripts/kohonen_pixels.png
-
-# Data folders
+data/
+metadata/
+catalogs/
+mastDownload/
 betapic/
 synthetic_lightcurves/
 kepler/
-data/
-catalogs/
 candidates/
 umap_projections/
-mastDownload/
 injection_recovery_*
 test_lightcurves/
-som_cutouts*
-som_plots*
-scripts/plots
 target_lists/
 tic_project/
 project_targets/
-plots/
 copy_log/
 
-# scripts
-scripts/selfsom.py ### Dave's code
-scripts/som/ ### SOM tools from TransitSOM
-scripts/file_remover.py ## misc script to remove lightcurves fainter than Tmag = 13 in pkl lightcurves
-scripts/eleanorlite_mag.py ## misc script for idenitfying Tmag problem in eleanor-lite lightcurves.
-
-# poster
-poster/
-
-# extra
-injection_tools.py
-lookup_checker.py
-lost_ids.txt
-__pycache__
-
-# output files
+# Generated plots and outputs
+plots/
 output*
+*.png
+*.pdf
+som_cutouts*
+som_plots*
+mad-plots*/
+ir_plots*/
+reverse-plots/
+thesis-plots/
+272-candidates*/
+candidates-poster/
 
-# Temp vim files
-*.swp
+# Generated data files
+combined_dataframe*
+eleanor-lite-combined*.txt
+*.parquet
 
-# other
-.DS_Store
-.ipynb_checkpoints/
-.idea/
-mastDownload/
-maxsector.py
-ir_plots/
-ir_plotsv2/
+# Compiled extensions
+*.so
 
-
-candidates.pdf
-candidates.png
-extreme-df.parquet
+# Project specific
+poster/
+Untitled.ipynb
+Untitled1.ipynb
+Untitled2.ipynb
+Vis-candidates.ipynb
+candidates.txt
+eleanor-lite_combined_pcaflux.txt
 figs.ipynb
-full-lc-1109.png
-full-lc-1920.png
-full-lc-2297.png
-full-lc-2808.png
-full-lc-7314.png
-full-lc-betapic.png
-hr-diagram.pdf
-hr-diagram.png
-hr.pdf
-mad-plots-v2/
-mad-plots/
 notebooks/candidates-final.ipynb
 notebooks/thesis_corrections.ipynb
-reverse-plots/
 s1-reversed.txt
 s1-reversedv3.txt
-s12-cuts.png
-s20-cuts.png
-s25-cuts.png
-s6-cuts-ref-comments.pdf
-s6-cuts-ref-comments.png
-s6_depthvstime.png
-s6_durationvstime.png
-s6_snrvsalpha.png
-s6_snrvstime.png
 s7-reversed-spocv2.txt
-s9-cuts.png
-scripts/analysis_tools_cython.cpython-38-darwin.so
 scripts/candidatesv2.txt
-scripts/s6.png
-thesis-plots/
