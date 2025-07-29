@@ -182,6 +182,17 @@ def import_XRPlightcurve(file_path,sector: int,clip=3,drop_bad_points=True,ok_fl
 
 
 def mad_cuts(table,info,clip=3):
+    """
+    Apply MAD (Median Absolute Deviation) cuts and bad time filtering to lightcurve data.
+    
+    Parameters:
+    :table: Lightcurve table with TIME, QUALITY columns
+    :info: Metadata list containing sector and camera information
+    :clip (float): Sigma threshold for MAD filtering. Default is 3.
+    
+    Returns:
+    :table: Filtered lightcurve table with MAD and bad time cuts applied
+    """
     # loading Ethan Kruse bad times
     bad_times = xrpdata.load_bad_times()
     bad_times = bad_times - 2457000
@@ -586,6 +597,17 @@ def comet_curve(t,A,t0,sigma,tail):
     return x
 
 def comet_curve_fit(x,y):
+    """
+    Fit an asymmetric comet-like transit curve to data using curve_fit.
+    
+    Parameters:
+    :x (array): Time values
+    :y (array): Flux values
+    
+    Returns:
+    :params (array): Fitted parameters [amplitude, center_time, sigma, tail]
+    :cov (array): Covariance matrix of the fitted parameters
+    """
     # Initial parameters guess
     # x = time
     # y = flux
@@ -657,6 +679,16 @@ def score_fit(y,fit):
 
 
 def interpret(params):
+    """
+    Interpret parameters from a double Gaussian fit by extracting peak characteristics.
+    
+    Parameters:
+    :params (array): Parameters from double Gaussian fit [A1, mu1, sigma1, A2, mu2, sigma2]
+    
+    Returns:
+    :height_ratio (float): Ratio of smaller peak to larger peak amplitude
+    :separation (float): Separation between peaks normalized by larger peak width
+    """
     # Choose A1,mu1,sigma1 to be stats for larger peak
     if params[0]>params[3]:
         A1,mu1,sigma1,A2,mu2,sigma2 = params
@@ -702,6 +734,19 @@ def classify(m,n,real,asym):
 
 
 def cutout(m,n,table,n_m_bg_start=3,n_m_bg_scale_factor=1):
+    """
+    Extract a cutout from the lightcurve table around a transit event.
+    
+    Parameters:
+    :m (int): Transit width in cadences
+    :n (int): Transit center index
+    :table: Lightcurve table to extract from
+    :n_m_bg_start (int): Background region size factor before transit. Default is 3.
+    :n_m_bg_scale_factor (int): Background region size factor after transit. Default is 1.
+    
+    Returns:
+    :table: Cutout section of the lightcurve table
+    """
     n_m_bg_end = n_m_bg_scale_factor*n_m_bg_start
 
     cutout_before = n-(m*n_m_bg_start)
@@ -897,6 +942,23 @@ def smoothing(table,method,window_length=2.5,power=0.08):
  
 
 def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
+    """
+    Perform two-step Lomb-Scargle smoothing with transit masking.
+    
+    Parameters:
+    :t (array): Time array
+    :timestep (float): Time step between cadences
+    :real (array): Array indicating real vs interpolated data points
+    :flux (array): Flux array to smooth
+    :m (int): Transit width in cadences
+    :n (int): Transit center index
+    :power (float): Lomb-Scargle power threshold. Default is 0.08.
+    
+    Returns:
+    :final_flux (array): Final smoothed flux
+    :periodicnoise_ls2 (array): Periodic noise removed in second step
+    :original_masked_flux (array): Original flux with transit masked
+    """
     masked_flux = np.copy(flux)                    
     masked_flux[n - 3*math.ceil(n*timestep) : n + 3*math.ceil(n*timestep)] = 0  
     original_masked_flux = np.copy(masked_flux)
@@ -930,6 +992,14 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
 
     Note: The lightcurve/table needs to be in the format of time, flux, quality, flux error.
     """
+    
+    # Constants
+    MIN_DATA_POINTS = 120  # 2.5 days of data
+    DEFAULT_LOMBSCARGLE_POWER = 0.08
+    T_STATISTIC_WINDOW_FACTOR = 60
+    SOM_CUTOUT_HALF_LENGTH = 60  # 2 day window either side
+    WOTAN_METHODS = ['biweight', 'lowess', 'median', 'mean', 'rspline', 'hspline', 'trim_mean', 'medfilt']
+    LOMBSCARGLE_METHODS = ['lomb-scargle', 'fourier']
 
     original_table = table.copy()
     file_basename = os.path.basename(f_path)
@@ -941,12 +1011,11 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
     if isinstance(table, pd.DataFrame):
         table = Table.from_pandas(table)
     
-    if len(table) > 120: # 120 represents 2.5 days of data
+    if len(table) > MIN_DATA_POINTS:
         
         # smoothing operation and normalisation of flux
         ## note: since Wotan performs time-windowed smoothing without the need for interpolation, `clean_data` is placed after the smoothing step to create interpolated points at data gaps (mostly for visual benefit). 
-        wotan_methods = ['biweight','lowess','median','mean','rspline','hspline','trim_mean','medfilt','hspline']
-        if method in wotan_methods:
+        if method in WOTAN_METHODS:
             flat_flux, trend_flux = smoothing(table, method='median')
             table = Table([table[table.colnames[0]], flat_flux - np.ones(len(flat_flux)), table[table.colnames[2]], table[table.colnames[3]]/np.nanmedian(table[table.colnames[1]])],names=('time','flux','quality','flux_error'))
             cleaning_ori_table = Table(original_table[original_table.colnames[:4]])
@@ -957,11 +1026,11 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             flux_calc_shape = flux.copy()
             flux *= real
 
-        elif method in ['lomb-scargle', 'fourier']:
+        elif method in LOMBSCARGLE_METHODS:
             t, flux, quality, real, flux_error = clean_data(table)
             flux = normalise_flux(flux)
             flux_ls = np.copy(flux)
-            lombscargle_filter(t, flux_ls, real, 0.08)
+            lombscargle_filter(t, flux_ls, real, DEFAULT_LOMBSCARGLE_POWER)
             trend_flux = flux - flux_ls
             flux_ls *= real
             flux = flux_ls
@@ -987,12 +1056,12 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
         M_stat = calc_mstatistic(flux)
 
         ## Perform T-statistic search method
-        m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts = run_test_statistic(flux, factor, timestep,t)
+        m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts = run_test_statistic(flux, factor, timestep, t, T_STATISTIC_WINDOW_FACTOR)
 
         # Second Lomb-Scargle
         if twostep:
             final_flux2, periodicnoise_ls2, original_masked_flux = smoothing_twostep(t,timestep,real,flux,m,n)  
-            m,n,T2,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts = run_test_statistic(final_flux2, factor, timestep,t)
+            m,n,T2,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts = run_test_statistic(final_flux2, factor, timestep, t, T_STATISTIC_WINDOW_FACTOR)
 
 
         asym, amplitude, width, skewness, skewness_error, depth, info, fits = calc_shape(m,n,t,flux_calc_shape,quality,real,flux_error,width=minT_duration)
@@ -1052,184 +1121,11 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             final_result = [val for val in search.split() if val != 'TIC']
 
         final_result.append(lc_info[2])
-        if make_plots:  
+        if make_plots:
             try:
-                os.makedirs("plots") # make directory plot if it doesn't exist
-            except FileExistsError:
-                pass
-            
-            ### column names ###
-            with open('colnames.json', 'r', encoding='utf-8') as f:
-                check = f.read()
-                columns = json.loads(check)
-                columns = columns['column_names']
-                columns.append('Sector')
-            
-            
-            ## PLOTTING ##
-            fig = plt.figure(figsize=(25,12)) ## change at top to plt.rcParams["figure.figsize"] = (10,6)
-
-            ### table of results ###
-            gs = fig.add_gridspec(23,3 ,hspace=1.5,wspace=0.2)
-            ax0 = plt.subplot(gs[0:1,:]) 
-            ax0.axis('off')
-            search_table = ax0.table(cellText=[final_result[1:14]], loc='center', colLabels=columns[1:14])
-            search_table.auto_set_font_size(False)
-            search_table.set_fontsize(10)
-            ax00 = plt.subplot(gs[1:2,:]) 
-            ax00.axis('off')
-            search2 = ax00.table(cellText=[final_result[13:]], loc='center', colLabels=columns[13:])
-            search2.auto_set_font_size(False)
-            search2.set_fontsize(10)
-            ax00.axis('off')
-
-
-            ### flux and the smoothing function ###
-            ax1 = plt.subplot(gs[2:5,:2]) 
-            ax1.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[original_table.colnames[1]]), s=10,alpha=0.5,zorder=1,label='original lightcurve')
-            ax1.scatter(t[real==1], flux[real==1],label='smoothened flux',alpha=0.9,zorder=3,s=10)
-            try:
-                ax1.plot(original_table[original_table.colnames[0]],normalise_flux(trend_flux),label='trend',color='black',linewidth=2,zorder=5)
+                plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info, trend_flux)
             except:
-                pass
-
-            ax1.set_xlim(np.min(t),np.max(t))
-            ax1.set_ylabel("Normalised flux")
-            ax1.legend(loc="center")
-            plt.setp(ax1.get_xticklabels(), visible=False)
-
-            ### transit cutout ###
-            ax2 = plt.subplot(gs[2:10,2:]) 
-            try:
-                cutout_t = info[0]
-                cutout_x = info[1]
-            except:
-                pass
-            try:
-                gauss_fit = fits[0]
-                comet_fit = fits[1]
-                skew_fit = fits[2]
-                   
-                ax2.plot(cutout_t, cutout_x,label='data') # flux
-                ax2.plot(cutout_t,gauss_fit,label='gaussian model',color='orange',zorder=4) # gauss fit
-                ax2.plot(cutout_t,skew_fit,label='skewed gauss model',color='black',zorder=3) # skewed gaussian
-                #ax2.plot(cutout_t,comet_fit,label='comet model',color='lime',linestyle='-',zorder=1) # comet fit    
-                ax2.set_xlabel("Time - 2457000 (BTJD Days)")
-                ax2.legend(loc="lower left")
-            except:
-                pass
-
-            ###### T-statistic #######
-            ax3 = plt.subplot(gs[5:8, :2])
-            im = ax3.imshow(
-                T1,
-                origin="bottom",
-                extent=ax1.get_xlim() + (0, 2.5),
-                aspect="auto",
-                cmap="rainbow",
-            )
-            #ax3.set_xlabel("Time - 2457000 (BTJD Days)")
-            ax3.set_ylabel("Transit width (days)") 
-            plt.setp(ax3.get_xticklabels(), visible=False) 
-
-            #cbax = plt.subplot(gs[8:9, :2])
-            #cb = Colorbar(ax=cbax, mappable=im, orientation='horizontal', ticklocation='bottom')#et_x(-0.075)
-            
-            ## FLUX BACKGROUND PLOT ##
-            ### the processed time array is not used for plotting purposes for background plots as they are unequal lengths to the original time array. 
-            ### and we do not "clean" the background flux. This does not make a difference visually; just a coding explanation as to why we use this time value.
-            ax4 = plt.subplot(gs[8:11, :2],sharex=ax1)
-
-            bkg = original_table['FLUX_BKG']
-            #mad = np.nanmedian(np.abs(norm - np.nanmedian(norm)))
-            original_time = original_table[original_table.colnames[0]]
-            ax4.scatter(original_time,bkg,s=10)
-            #ax4.scatter(norm,norm[norm.colnames[4]],s=10)
-            #ax4.axhline(mad,label = "mad",color='black',linewidth=5)
-            #ax4.axhline(3*mad,label="3 x mad",color='red',linewidth=5)
-            ax4.set_ylabel('FLUX_BKG')
-            ax4.set_xlim(ax1.get_xlim())
-            plt.setp(ax4.get_xticklabels(), visible=False)
-            ax5 = plt.subplot(gs[11:14, :2],sharex=ax1)
-            x_cen = original_table['X_CENTROID']
-            ax5.scatter(original_time, x_cen, s=10)
-            ax5.set_ylabel('X_CEN')
-            ax5.set_xlim(ax1.get_xlim())
-            plt.setp(ax5.get_xticklabels(), visible=False)
-
-            ax6 = plt.subplot(gs[14:17, :2])
-            y_cen = original_table['Y_CENTROID']
-            ax6.scatter(original_time, y_cen, s=10)
-            ax6.set_ylabel('Y_CEN')
-            ax6.tick_params(axis='x', labelbottom=True) 
-            ax6.set_xlim(ax1.get_xlim())
-            ax6.set_xticklabels([])
-
-
-            ax7 = plt.subplot(gs[17:, :],sharex=ax1)
-
-            ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table['CORR_FLUX']), s=10,alpha=0.5,zorder=1,label='corrected flux')
-            ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table['PCA_FLUX'])-0.025, s=10,alpha=0.5,zorder=1,label='pca flux')
-            ax7.scatter(t[real==1], flux[real==1]-0.05,label='smoothened flux',alpha=0.9,zorder=3,s=10)
-            ax7.legend()
-            #ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[original_table.colnames[-1]]-0.01), s=10,alpha=0.5,zorder=1,label='unselected lightcurve pipeline')
-
-            
-
-            try:
-                obj_id = lc_info[0]
-            except:
-                obj_id = input("object id: ")
-            ## projection in the sky
-            #ax6 = plt.subplot(gs[16:,:3],projection="aitoff")
-            #ra = info[-2] * u.degree
-            #dec = info[-1] * u.degree
-            #d = SkyCoord(ra=ra, dec=dec, frame='icrs')
-            #ax6.figure(figsize=(13,9))
-            #ax6.set_title("Aitoff projection")
-            #ax6.grid(True)
-            #ax6.plot(ra, dec, 'o', alpha=2)
-
-            ## HR Diagram
-            #ax7 = plt.subplot(gs[16:,3:])
-            #ax7.set_title("HR Diagram")
-
-            ### finding information from simbad ###
-            customSimbad = Simbad()
-            customSimbad.add_votable_fields("sptype","parallax")
-
-            obj_id = "TIC" + str(obj_id)
-
-            try:
-                obj = customSimbad.query_object(obj_id).to_pandas().T
-                obj_name, obj_sptype, obj_parallax = obj.loc['MAIN_ID'][0], obj.loc['SP_TYPE'][0],obj.loc['PLX_VALUE'][0]
-                fig.suptitle(f" {obj_id}, {obj_name}, Spectral Type {obj_sptype}, Parallax {obj_parallax} (mas)", fontsize = 16,y=0.93)     
-                fig.tight_layout()
-            except UnboundLocalError:
-                print("object ID not found.")
-                fig.suptitle("ID not identified.",fontsize = 16,y=0.93)
-                pass
-            except AttributeError:
-                pass
-
-            base_filename = f'plots/{obj_id}.png'
-
-            if not os.path.exists(base_filename):
-                fig.savefig(f'plots/{obj_id}.png',dpi=300) 
-            else:
-                # If the base filename exists, find a unique filename
-                suffix = 1
-                while True:
-                    unique_filename = f'plots/{obj_id}_{suffix}.png'
-                    if not os.path.exists(unique_filename):
-                        fig.savefig(unique_filename,dpi=300)
-                        break
-                    suffix += 1
-            
-
-
-            plt.show()
-            plt.close()
+                plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info)
 
     else:
         search = file_basename+' 0 0 0 0 0 0 0 0 notEnoughData'
@@ -1243,7 +1139,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
         data_to_cut = pd.DataFrame(data=[t, nonnormalised_flux, quality, flux_error]).T 
 
         data_to_cut.columns = ['time','flux','quality','flux_err']
-        som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=60) # 2 day window either side 
+        som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=SOM_CUTOUT_HALF_LENGTH) # 2 day window either side 
         #x1 = np.mean(som_lightcurve.flux[0:12])
         #x2 = np.mean(som_lightcurve.flux[-13:-1]) # the last 12 points
 
@@ -1289,8 +1185,30 @@ def _folders_in(path_to_parent):
     except:
         pass
 
-def run_test_statistic(flux, factor, timestep, t):
-        T1 = test_statistic_array(flux,60 * factor)
+def run_test_statistic(flux, factor, timestep, t, window_factor=60):
+    """
+    Compute T-statistic array and extract transit parameters from minimum value.
+    
+    Parameters:
+    :flux (array): Normalized flux array
+    :factor (float): Scaling factor for transit width search
+    :timestep (float): Time step between cadences
+    :t (array): Time array
+    :window_factor (int): Maximum search window factor. Default is 60.
+    
+    Returns:
+    :m (int): Transit width in cadences at minimum T-statistic
+    :n (int): Transit center index at minimum T-statistic
+    :T1 (array): Full T-statistic array
+    :minT (float): Minimum T-statistic value (SNR)
+    :minT_time (float): Time of minimum T-statistic
+    :minT_duration (float): Duration of transit at minimum T-statistic
+    :Tm_start (int): Start index of transit
+    :Tm_end (int): End index of transit
+    :Tm_depth (float): Mean flux depth during transit
+    :Ts (float): Standard deviation of T-statistic at transit width
+    """
+        T1 = test_statistic_array(flux, window_factor * factor)
         m, n = np.unravel_index(
         T1.argmin(), T1.shape
         )  # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
@@ -1305,7 +1223,161 @@ def run_test_statistic(flux, factor, timestep, t):
         return m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts
 
 
+def plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info, trend_flux=None):
+    """
+    Creates comprehensive plots for lightcurve analysis.
+    """
+    try:
+        os.makedirs("plots")
+    except FileExistsError:
+        pass
+        
+    with open('colnames.json', 'r', encoding='utf-8') as f:
+        check = f.read()
+        columns = json.loads(check)
+        columns = columns['column_names']
+        columns.append('Sector')
+    
+    fig = plt.figure(figsize=(25,12))
+    
+    gs = fig.add_gridspec(23,3 ,hspace=1.5,wspace=0.2)
+    ax0 = plt.subplot(gs[0:1,:]) 
+    ax0.axis('off')
+    search_table = ax0.table(cellText=[final_result[1:14]], loc='center', colLabels=columns[1:14])
+    search_table.auto_set_font_size(False)
+    search_table.set_fontsize(10)
+    ax00 = plt.subplot(gs[1:2,:]) 
+    ax00.axis('off')
+    search2 = ax00.table(cellText=[final_result[13:]], loc='center', colLabels=columns[13:])
+    search2.auto_set_font_size(False)
+    search2.set_fontsize(10)
+    ax00.axis('off')
+
+    ax1 = plt.subplot(gs[2:5,:2]) 
+    ax1.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[original_table.colnames[1]]), s=10,alpha=0.5,zorder=1,label='original lightcurve')
+    ax1.scatter(t[real==1], flux[real==1],label='smoothened flux',alpha=0.9,zorder=3,s=10)
+    try:
+        if trend_flux is not None:
+            ax1.plot(original_table[original_table.colnames[0]],normalise_flux(trend_flux),label='trend',color='black',linewidth=2,zorder=5)
+    except:
+        pass
+
+    ax1.set_xlim(np.min(t),np.max(t))
+    ax1.set_ylabel("Normalised flux")
+    ax1.legend(loc="center")
+    plt.setp(ax1.get_xticklabels(), visible=False)
+
+    ax2 = plt.subplot(gs[2:10,2:]) 
+    try:
+        cutout_t = info[0]
+        cutout_x = info[1]
+    except:
+        pass
+    try:
+        gauss_fit = fits[0]
+        comet_fit = fits[1]
+        skew_fit = fits[2]
+           
+        ax2.plot(cutout_t, cutout_x,label='data')
+        ax2.plot(cutout_t,gauss_fit,label='gaussian model',color='orange',zorder=4)
+        ax2.plot(cutout_t,skew_fit,label='skewed gauss model',color='black',zorder=3)
+        ax2.set_xlabel("Time - 2457000 (BTJD Days)")
+        ax2.legend(loc="lower left")
+    except:
+        pass
+
+    ax3 = plt.subplot(gs[5:8, :2])
+    im = ax3.imshow(
+        T1,
+        origin="bottom",
+        extent=ax1.get_xlim() + (0, 2.5),
+        aspect="auto",
+        cmap="rainbow",
+    )
+    ax3.set_ylabel("Transit width (days)") 
+    plt.setp(ax3.get_xticklabels(), visible=False) 
+
+    ax4 = plt.subplot(gs[8:11, :2],sharex=ax1)
+
+    bkg = original_table['FLUX_BKG']
+    original_time = original_table[original_table.colnames[0]]
+    ax4.scatter(original_time,bkg,s=10)
+    ax4.set_ylabel('FLUX_BKG')
+    ax4.set_xlim(ax1.get_xlim())
+    plt.setp(ax4.get_xticklabels(), visible=False)
+    ax5 = plt.subplot(gs[11:14, :2],sharex=ax1)
+    x_cen = original_table['X_CENTROID']
+    ax5.scatter(original_time, x_cen, s=10)
+    ax5.set_ylabel('X_CEN')
+    ax5.set_xlim(ax1.get_xlim())
+    plt.setp(ax5.get_xticklabels(), visible=False)
+
+    ax6 = plt.subplot(gs[14:17, :2])
+    y_cen = original_table['Y_CENTROID']
+    ax6.scatter(original_time, y_cen, s=10)
+    ax6.set_ylabel('Y_CEN')
+    ax6.tick_params(axis='x', labelbottom=True) 
+    ax6.set_xlim(ax1.get_xlim())
+    ax6.set_xticklabels([])
+
+    ax7 = plt.subplot(gs[17:, :],sharex=ax1)
+
+    ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table['CORR_FLUX']), s=10,alpha=0.5,zorder=1,label='corrected flux')
+    ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table['PCA_FLUX'])-0.025, s=10,alpha=0.5,zorder=1,label='pca flux')
+    ax7.scatter(t[real==1], flux[real==1]-0.05,label='smoothened flux',alpha=0.9,zorder=3,s=10)
+    ax7.legend()
+
+    try:
+        obj_id = lc_info[0]
+    except:
+        obj_id = input("object id: ")
+
+    customSimbad = Simbad()
+    customSimbad.add_votable_fields("sptype","parallax")
+
+    obj_id = "TIC" + str(obj_id)
+
+    try:
+        obj = customSimbad.query_object(obj_id).to_pandas().T
+        obj_name, obj_sptype, obj_parallax = obj.loc['MAIN_ID'][0], obj.loc['SP_TYPE'][0],obj.loc['PLX_VALUE'][0]
+        fig.suptitle(f" {obj_id}, {obj_name}, Spectral Type {obj_sptype}, Parallax {obj_parallax} (mas)", fontsize = 16,y=0.93)     
+        fig.tight_layout()
+    except UnboundLocalError:
+        print("object ID not found.")
+        fig.suptitle("ID not identified.",fontsize = 16,y=0.93)
+        pass
+    except AttributeError:
+        pass
+
+    base_filename = f'plots/{obj_id}.png'
+
+    if not os.path.exists(base_filename):
+        fig.savefig(f'plots/{obj_id}.png',dpi=300) 
+    else:
+        suffix = 1
+        while True:
+            unique_filename = f'plots/{obj_id}_{suffix}.png'
+            if not os.path.exists(unique_filename):
+                fig.savefig(unique_filename,dpi=300)
+                break
+            suffix += 1
+
+    plt.show()
+    plt.close()
+
+
 def save_unique_file(lc_info, som_lightcurve,som_cutouts_directory_name='som_cutouts'):
+    """
+    Save SOM lightcurve cutout to a unique filename, avoiding overwrites.
+    
+    Parameters:
+    :lc_info (list): Lightcurve metadata containing object ID and sector
+    :som_lightcurve: SOM lightcurve data object with time, flux, and flux_err attributes
+    :som_cutouts_directory_name (str): Directory name to save cutouts. Default is 'som_cutouts'.
+    
+    Returns:
+    None (saves .npz file to disk)
+    """
     obj_id = lc_info[0]
     sector = lc_info[2]
     base_filename = f'{som_cutouts_directory_name}/{obj_id}.npz'
