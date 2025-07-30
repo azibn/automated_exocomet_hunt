@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-# First have to disable inbuilt multithreading for performance reasons.
-## Change directory of batch analyse to one above, so that outputs can be put in above dir and not in `scripts`.
+"""
+Batch analysis script for processing lightcurve files.
+
+Disables built-in multithreading for performance and processes lightcurves
+from various pipelines (eleanor-lite, spoc, xrp) with configurable parameters.
+"""
 import os
 import multiprocessing
 import sys
@@ -96,23 +100,17 @@ parser.add_argument(
 
 parser.add_argument(
     "-plots_dir",
-    help="Directory to save plots in. Default is '/plots'.",
-    default="'/plots.'",
+    help="Directory to save plots in. Default is 'plots'.",
+    default="plots",
     dest="plots_dir",
 )
 
 
-# Get directories from command line arguments.
 args = parser.parse_args()
 
-# set niceness
 os.nice(args.nice)
 
-paths = []
-for path in args.path:
-    paths.append(os.path.expanduser(path))
-
-## Prepare multithreading.
+paths = [os.path.expanduser(path) for path in args.path]
 
 try:
     multiprocessing.set_start_method("fork")  # default for >=3.8 is spawn
@@ -125,35 +123,32 @@ lock = m.Lock()
 # pipeline_options = {"xrp":".pkl","spoc":".fits"}
 
 
-def run_lc(f_path):
+def run_lc(file_path):
     """
-     Function: Processes the lightcurves
+    Process a single lightcurve file.
 
-     Args:
-         f_path (str): Path to the lightcurve file.
-         get_metadata (bool, optional): Flag indicating whether to retrieve metadata. Defaults to args.metadata.
-         return_arraydata (bool, optional): Flag indicating whether to return array data. Defaults to args.return_arraydata.
+    Args:
+        file_path (str): Path to the lightcurve file (.fits or .pkl)
 
-     Raises:
-         KeyboardInterrupt: Raised when the process is terminated early.
-         SystemExit: Raised when the process is terminated by a system exit.
+    Raises:
+        KeyboardInterrupt: Process terminated early
+        SystemExit: System exit called
 
-    Lightcurve results are saved in `output_log/{file.txt}`, unless specified with the no save argument `-n`.
-
+    Results are saved to outputs/{filename} unless -n flag is used.
     """
 
     try:
-        f = os.path.basename(f_path)
-        print(f_path)
-        if f_path.endswith(".pkl"):
+        filename = os.path.basename(file_path)
+        print(file_path)
+        if file_path.endswith(".pkl"):
 
             table, lc_info = import_XRPlightcurve(
-                f_path, sector=sector, clip=args.c, drop_bad_points=args.q
+                file_path, sector=sector, clip=args.c, drop_bad_points=args.q
             )
             table = table[table.colnames[:5]]
 
         else:
-            table, lc_info = import_lightcurve(f_path, flux=args.f, pipeline=args.pipeline)
+            table, lc_info = import_lightcurve(file_path, flux=args.f, pipeline=args.pipeline)
             if (args.pipeline == 'eleanor-lite') and ('pca' in args.f.lower()):
                 table = table['TIME','PCA_FLUX','QUALITY','FLUX_ERR','FLUX_BKG','X_CENTROID','Y_CENTROID','CORR_FLUX']
             else:
@@ -161,7 +156,7 @@ def run_lc(f_path):
             
         result_str, save_data = processing(
             table,
-            f_path,
+            file_path,
             lc_info,
             method=args.m,
             make_plots=args.p,
@@ -176,9 +171,9 @@ def run_lc(f_path):
             os.makedirs("metadata", exist_ok=True)
 
             with open(
-                os.path.join("metadata/", f"s{sector}.txt"), "a"
-            ) as out_file2:
-                out_file2.write(f + " " + lc_info + " " + "\n")
+                os.path.join("metadata", f"s{sector}.txt"), "a"
+            ) as metadata_file:
+                metadata_file.write(f"{filename} {lc_info}\n")
 
 
         if args.n:
@@ -190,8 +185,8 @@ def run_lc(f_path):
         os.makedirs("outputs", exist_ok=True)
 
         lock.acquire()
-        with open(os.path.join("outputs", args.of), "a") as out_file:
-            out_file.write(result_str + "\n")
+        with open(os.path.join("outputs", args.of), "a") as output_file:
+            output_file.write(f"{result_str}\n")
 
 
         lock.release()
@@ -199,28 +194,8 @@ def run_lc(f_path):
         print("Process terminated early, exiting", file=sys.stderr)
         raise
     except Exception as e:
-        print("\nError with file " + f_path, file=sys.stderr)
+        print(f"\nError processing {file_path}: {e}", file=sys.stderr)
         traceback.print_exc()
-    except:
-        print(f"An error occurred: {e}")
-    # Exit the script with an error code
-        sys.exit(1)
-
-# def find_fits_files(path: str) -> List[str]:
-#     """
-#     Recursively searches for all .fits files in the specified directory and its subdirectories.
-#     Returns a list of file paths.
-#     """
-#     fits_files = []
-#     for entry in tqdm(os.scandir(path)):
-#         if entry.is_file() and entry.name[-5:] == ".fits":
-#             fits_files.append(entry.path)
-#         elif entry.is_dir():
-#             fits_files.extend(find_fits_files(entry.path))
-#     return fits_files
-
-
-
 
 
 if __name__ == "__main__":
@@ -232,8 +207,6 @@ if __name__ == "__main__":
         sector = input("Sector? ")
 
 
-    #else:
-    #    sector = input("Sector? ")
 
     if (args.pipeline == 'eleanor-lite') and ('pca' in args.f.lower()):
         print(f"using PCA FLUX from {args.pipeline}")
@@ -251,8 +224,7 @@ if __name__ == "__main__":
 
                 sys.exit()
             elif path.endswith(".txt") or path.endswith(".csv"):
-                "processes a list of TIC IDs"
-                print("processing file")
+                print("Processing file list")
                 with open(path, "r") as file:
                     files = [line.strip() for line in file.readlines()]
                 pool.map(run_lc, files)

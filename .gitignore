@@ -30,6 +30,7 @@ mastDownload/
 betapic/
 synthetic_lightcurves/
 kepler/
+notebooks/eda/
 candidates/
 umap_projections/
 injection_recovery_*
