@@ -298,36 +298,23 @@ def import_lightcurve(file_path, flux='PDCSAP_FLUX', drop_bad_points=True,
     if (pipeline == 'eleanor-lite') & (drop_bad_points == True):
         table = mad_cuts(table,info)
 
-    if drop_bad_points:
-        bad_points = []
-        if 'kplr' in file_path or 'ktwo' in file_path:
-            q_ind = get_quality_indices(table['SAP_QUALITY'])
-        else:
-            q_ind = get_quality_indices(table['QUALITY'])
-        
-        for j,q in enumerate(q_ind): # j=index, q=quality
-            if j+1 not in ok_flags:
-                bad_points += q.tolist() # adds bad_points by value of q (the quality indices) and converts to list
+    # Apply data cleaning using shared function
+    # Determine column names based on pipeline
+    if 'kplr' in file_path or 'ktwo' in file_path:
+        quality_col = 'SAP_QUALITY'
+    else:
+        quality_col = 'QUALITY'
     
-        # bad_points = [i for i in range(len(table)) if table[i][2]>0]
-        table.remove_rows(bad_points)
-
-    # Delete rows containing NaN values. 
-    ## if flux or time columns are NaN's, remove them.
-    nan_rows = [ i for i in range(len(table)) if
-            math.isnan(table[i][1]) or math.isnan(table[i][0]) ]
-
-    table.remove_rows(nan_rows)
-
-    # Smooth data by deleting overly 'spikey' points.
-    ## if flux - 0.5*(difference between neihbouring points) > 3*(distance between neighbouring points), spike identified
-    spikes = [ i for i in range(1,len(table)-1) if \
-            abs(table[i][1] - 0.5*(table[i-1][1]+table[i+1][1])) \
-            > 3*abs(table[i+1][1] - table[i-1][1])]
-
-    ## flux smoothened out by changing those points to 0.5*distance between neighbouring points
-    for i in spikes:
-        table[i][1] = 0.5*(table[i-1][1] + table[i+1][1])
+    # Use the first two columns as time and flux (standard in lightcurve tables)
+    time_col = table.colnames[0]  # TIME
+    flux_col = table.colnames[1]  # flux (PDCSAP_FLUX, SAP_FLUX, etc.)
+    
+    table = _clean_lightcurve_data(table, 
+                                  drop_bad_points=drop_bad_points, 
+                                  ok_flags=ok_flags,
+                                  time_col=time_col,
+                                  flux_col=flux_col,
+                                  quality_col=quality_col)
 
     if (return_type == 'pandas') or (return_type == 'pd'):
         return table.to_pandas(), info
@@ -354,6 +341,62 @@ def calculate_timestep(table):
         return np.median(np.diff(table['time'])) ## change this to account for any time column names
 
     
+
+def _clean_lightcurve_data(table, drop_bad_points=True, ok_flags=[], 
+                          time_col=None, flux_col=None, quality_col=None):
+    """
+    Internal function: Apply data cleaning logic to lightcurve data.
+    Handles quality filtering, NaN removal, and spike smoothing.
+    
+    Parameters:
+    :table (astropy.table.Table): The lightcurve table to clean
+    :drop_bad_points (bool): Whether to drop points flagged as bad (default: True)
+    :ok_flags (list): List of quality flags considered acceptable (default: [])
+    :time_col (str): Name of the time column to check for NaNs
+    :flux_col (str): Name of the flux column to check for NaNs and spikes
+    :quality_col (str): Name of the quality column for bad point filtering
+    
+    Returns:
+    :table (astropy.table.Table): Cleaned lightcurve table
+    """
+    import math
+    import numpy as np
+    
+    # Apply quality flag filtering if requested
+    if drop_bad_points and quality_col and quality_col in table.colnames:
+        bad_points = []
+        table[quality_col] = table[quality_col].astype(np.int32)
+        q_ind = get_quality_indices(table[quality_col])
+        
+        for j, q in enumerate(q_ind):
+            if j+1 not in ok_flags:
+                bad_points += q.tolist()
+        
+        if bad_points:
+            table.remove_rows(bad_points)
+    
+    # Delete rows containing NaN values
+    if time_col and flux_col and time_col in table.colnames and flux_col in table.colnames:
+        time_col_idx = table.colnames.index(time_col)
+        flux_col_idx = table.colnames.index(flux_col)
+        
+        nan_rows = [i for i in range(len(table)) if
+                   math.isnan(table[i][flux_col_idx]) or math.isnan(table[i][time_col_idx])]
+        if nan_rows:
+            table.remove_rows(nan_rows)
+    
+    # Smooth data by removing overly 'spikey' points
+    if flux_col and flux_col in table.colnames and len(table) > 2:
+        flux_col_idx = table.colnames.index(flux_col)
+        spikes = [i for i in range(1, len(table)-1) if
+                 abs(table[i][flux_col_idx] - 0.5*(table[i-1][flux_col_idx] + table[i+1][flux_col_idx])) 
+                 > 3*abs(table[i+1][flux_col_idx] - table[i-1][flux_col_idx])]
+        
+        for i in spikes:
+            table[i][flux_col_idx] = 0.5*(table[i-1][flux_col_idx] + table[i+1][flux_col_idx])
+    
+    return table
+
 
 def clean_data(table):
     """
@@ -501,7 +544,7 @@ def test_statistic_array(np.ndarray[np.float64_t,ndim=1] flux, int max_half_widt
 
     cdef int i, m, j
     cdef float mu,sigma,norm_factor
-    sigma = flux.std()
+    sigma = np.nanstd(flux)
 
     cdef np.ndarray[dtype=np.float64_t,ndim=2] t_test = np.zeros([2*n,N])
 #    cdef np.ndarray[dtype=np.float64_t,ndim=1] flux_points = np.zeros(2*n)
@@ -1024,6 +1067,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
 
         elif method in LOMBSCARGLE_METHODS:
             t, flux, quality, real, flux_error = clean_data(table)
+            flux_calc_shape = flux.copy()
             flux = normalise_flux(flux)
             flux_ls = np.copy(flux)
             lombscargle_filter(t, flux_ls, real, DEFAULT_LOMBSCARGLE_POWER)
@@ -1032,7 +1076,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             flux = flux_ls
 
         else:
-            t, flux, quality, real, flux_error, _ = clean_data(table)
+            t, flux, quality, real, flux_error = clean_data(table)
             flux = normalise_flux(flux)
             flux *= real
 
@@ -1109,6 +1153,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
 
         ## little fix for string splitting between SPOC lightcurves and XRP ones
         result = search.split()
+        print(result)
         midtransit_time = float(result[4])
 
         if 'TIC' in search:

@@ -11,7 +11,9 @@ import sys
 import traceback
 import argparse
 import glob
+from astropy.table import Table
 import warnings
+import numpy as np
 from typing import List, Tuple, Optional
 import lightkurve as lk
 import astropy
@@ -20,11 +22,37 @@ from analysis_tools_cython import (
     import_lightcurve,
     processing,
     _folders_in,
+    _clean_lightcurve_data
 )
 
 os.environ["OMP_NUM_THREADS"] = "1"
 warnings.filterwarnings("ignore")
 
+pipeline_dict = {
+'eleanor-lite': {
+    'columns': ['TIME', 'CORR_FLUX', 'QUALITY', 'FLUX_ERR','FLUX_BKG','X_CENTROID','Y_CENTROID','PCA_FLUX','RAW_FLUX'],
+    'info': ['TIC_ID', 'TMAG', 'SECTOR', 'CAMERA','CCD','RA_OBJ', 'DEC_OBJ']
+    # TMAG on eleanor-lite is set as 999 for all lightcurves. Don't know why.
+},
+'kepler': {
+    'columns': ['TIME', 'flux', 'SAP_QUALITY', 'SAP_FLUX_ERR'],
+    'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'QUARTER', 'RA_OBJ', 'DEC_OBJ']
+},
+'K2': {
+    'columns': ['TIME', 'flux', 'SAP_QUALITY', 'PDSCAP_FLUX_ERR'],
+    'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'CAMPAIGN', 'RA_OBJ', 'DEC_OBJ']
+},
+'TESS-SPOC': {
+    'columns': ['TIME', 'PDCSAP_FLUX', 'QUALITY','PDCSAP_FLUX_ERR','SAP_BKG'],
+    'info': ['TICID','TESSMAG','SECTOR','CAMERA', 'CCD','RA_OBJ','DEC_OBJ']
+},
+'eleanor-xrp': {
+    'columns': ['time', 'corr_flux', 'quality','flux_err','pca_flux'],
+    'info': ['TIC ID', 'RA', 'DEC', 'TESSMAG', 'Camera','CCD']
+},
+
+
+}
 
 def setup_argument_parser() -> argparse.ArgumentParser:
     """
@@ -86,6 +114,12 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-n", help="does not save output file", action="store_true")
     parser.add_argument(
+        "--mission",
+        help="NASA mission. Options are 'Kepler', 'K2','TESS'.",
+        default="TESS",
+        type=str
+    )
+    parser.add_argument(
         "-pipeline",
         help="pipeline choice. Default is `eleanor-lite`. Other options are `spoc` and `xrp`",
         default="eleanor-lite",
@@ -112,6 +146,12 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         "-id",
         help="Process single lightcurve by ID (e.g., '3542116' for KIC or '270577175' for TIC). Catalog inferred from -pipeline argument. Cannot be used with path arguments.",
         dest="target_id",
+    )
+
+    parser.add_argument(
+        "-s","--sector","--campaign","--quarter",
+        help="TESS Sector/Kepler Quarter/K2 Campaign (when used with `-id`.)",
+        dest="sector",
     )
     
     return parser
@@ -149,22 +189,18 @@ def download_lightcurve(target_id: str, mission: str = 'TESS', author: str = 'SP
     # Filter by sector/quarter/campaign if specified
     if sector is not None:
         if mission == 'TESS':
-            search_result = search_result[search_result.sector == sector]
+            search_result = lk.search_lightcurve(target_name, mission=mission, author=author,sector=sector)
         elif mission == 'Kepler':
-            search_result = search_result[search_result.quarter == sector]
+            search_result = lk.search_lightcurve(target_name, mission=mission, author=author,quarter=sector)
         elif mission == 'K2':
-            search_result = search_result[search_result.campaign == sector]
+            search_result = lk.search_lightcurve(target_name, mission=mission, author=author,campaign=sector)
     
     if len(search_result) == 0:
         raise ValueError(f"No lightcurves found for {target_name} in sector/quarter/campaign {sector}")
     
-    lc_collection = search_result.download()
+    lightcurve = search_result.download()
     
-    if lc_collection is None or len(lc_collection) == 0:
-        raise ValueError(f"Failed to download lightcurve for {target_name}")
-    
-    lightcurve = lc_collection[0] if hasattr(lc_collection, '__getitem__') else lc_collection
-    
+    print(type(lightcurve))
     return lightcurve
 
 
@@ -257,13 +293,58 @@ def run_lc(input_data) -> None:
         else:
             # Downloaded lightcurve processing
             lightcurve, target_id = input_data
+            
             print(f"Processing downloaded lightcurve for {target_id}")
             
-            table = lightcurve.to_table()
+            #table = lightcurve.to_panads()
+            table = lightcurve.to_pandas().reset_index()
+            table = Table.from_pandas(table)
+            table = table.filled(np.nan)
+
             lc_info = [target_id, lightcurve.mission, getattr(lightcurve, 'sector', 'unknown')]
             
             process_name = f"downloaded_{target_id}"
             metadata_filename = target_id
+
+            pipeline = args.pipeline  # or 'eleanor-lite', etc.
+            table_cols_lower_map = {col.lower(): col for col in table.colnames}
+
+            expected_cols = pipeline_dict[pipeline]['columns']
+            expected_cols_lower = [col.lower() for col in expected_cols]
+
+            available_cols = [table_cols_lower_map[col] for col in expected_cols_lower if col in table_cols_lower_map]
+
+        
+            expected_cols = pipeline_dict[args.pipeline]['columns']
+            
+            # Map expected columns to actual columns in the table
+            time_col = expected_cols[0].lower() if len(expected_cols) > 0 and expected_cols[0].lower() in table_cols_lower_map else None
+            flux_col = expected_cols[1].lower() if len(expected_cols) > 1 and expected_cols[1].lower() in table_cols_lower_map else None
+            quality_col = expected_cols[2].lower() if len(expected_cols) > 2 and expected_cols[2].lower() in table_cols_lower_map else None
+            flux_error_col = expected_cols[3].lower() if len(expected_cols) > 3 and expected_cols[3].lower() in table_cols_lower_map else None
+            
+            # Get actual column names from the mapping
+            if time_col:
+                time_col = table_cols_lower_map[time_col]
+            if flux_col:
+                flux_col = table_cols_lower_map[flux_col]
+            if quality_col:
+                quality_col = table_cols_lower_map[quality_col]
+            if flux_error_col:
+                flux_error_col = table_cols_lower_map[flux_error_col]
+            
+            table = _clean_lightcurve_data(table,
+                                          drop_bad_points=args.q,
+                                          ok_flags=[],
+                                          time_col=time_col,
+                                          flux_col=flux_col,
+                                          quality_col=quality_col)
+
+            table = Table([table[time_col], table[flux_col], table[quality_col], table[flux_error_col]], 
+                          names=['time', 'flux', 'quality', 'flux_error'])
+
+            print(table)
+
             
         result_str, save_data = processing(
             table,
@@ -324,14 +405,10 @@ if __name__ == "__main__":
 
     # Handle single target download mode
     if args.target_id:
-        if args.path != ['.']:
-            print("Error: Cannot use -id argument with path arguments.", file=sys.stderr)
-            sys.exit(1)
-            
         print(f"Downloading lightcurve for target ID: {args.target_id}")
         
         try:
-            lightcurve = download_lightcurve(args.target_id)
+            lightcurve = download_lightcurve(args.target_id, mission=args.mission, author=args.pipeline, sector=args.sector)
             run_lc((lightcurve, args.target_id))
         except Exception as e:
             print(f"Error downloading/processing target {args.target_id}: {e}", file=sys.stderr)
