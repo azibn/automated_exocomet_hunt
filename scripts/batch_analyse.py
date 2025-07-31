@@ -12,7 +12,6 @@ import traceback
 import argparse
 import glob
 import warnings
-import tempfile
 from typing import List, Tuple, Optional
 import lightkurve as lk
 import astropy

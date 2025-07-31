@@ -1,9 +1,9 @@
-name: exocomet
+name: exocomet2
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.7
+  - python=3.8
   - astropy
   - astroquery
   - black
@@ -12,7 +12,7 @@ dependencies:
   - jupyterlab
   - matplotlib
   - numexpr
-  - numba==0.53.0
+  - numba
   - numpy
   - pandas
   - plotly
@@ -22,12 +22,11 @@ dependencies:
   - tensorflow
   - tk
   - tqdm
-  - pickle5
   - pip
   - pylint
   - umap-learn
   - pip:
     - lightkurve>=2
     - eleanor
-    - markupsafe==2.0.1
+    - markupsafe>=2.1.1
     - wotan

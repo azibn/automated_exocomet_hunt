@@ -4,7 +4,7 @@ import os
 import math
 import eleanor
 import sys
-import kplr
+import lightkurve as lk
 import xrpdata
 import warnings
 import json
@@ -271,10 +271,6 @@ def import_lightcurve(file_path, flux='PDCSAP_FLUX', drop_bad_points=True,
     'ktwo': {
         'columns': ['TIME', 'flux', 'SAP_QUALITY', 'PDSCAP_FLUX_ERR'],
         'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'CAMPAIGN', 'RA_OBJ', 'DEC_OBJ']
-    },
-    'tasoc': {
-        'columns': ['TIME', 'flux', 'QUALITY'],
-        'info': []
     },
     'spoc': {
         'columns': ['TIME', 'PDCSAP_FLUX', 'QUALITY','PDCSAP_FLUX_ERR','SAP_BKG'],
@@ -1208,19 +1204,19 @@ def run_test_statistic(flux, factor, timestep, t, window_factor=60):
     :Tm_depth (float): Mean flux depth during transit
     :Ts (float): Standard deviation of T-statistic at transit width
     """
-        T1 = test_statistic_array(flux, window_factor * factor)
-        m, n = np.unravel_index(
-        T1.argmin(), T1.shape
-        )  # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
-        minT = T1[m, n] # snr
-        minT_time = t[n] # time
-        minT_duration = m * timestep
-        Tm_start = n-math.floor((m-1)/2)
-        Tm_end = Tm_start + m
-        Tm_depth = flux[Tm_start:Tm_end].mean() 
-        Ts = nonzero(T1[m]).std() # only the box width selected. Not RMS of all T-statistic
-        
-        return m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts
+    T1 = test_statistic_array(flux, window_factor * factor)
+    m, n = np.unravel_index(
+    T1.argmin(), T1.shape
+    )  # T.argmin(): location of  T.shape: 2D array with x,y points in that dimension
+    minT = T1[m, n] # snr
+    minT_time = t[n] # time
+    minT_duration = m * timestep
+    Tm_start = n-math.floor((m-1)/2)
+    Tm_end = Tm_start + m
+    Tm_depth = flux[Tm_start:Tm_end].mean() 
+    Ts = nonzero(T1[m]).std() # only the box width selected. Not RMS of all T-statistic
+    
+    return m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts
 
 
 def plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info, trend_flux=None):

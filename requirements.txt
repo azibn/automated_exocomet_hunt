@@ -1,4 +1,4 @@
-python=3.7.13
+python=3.8
 astropy
 astroquery
 black
@@ -9,7 +9,7 @@ jupyterlab
 mamba
 matplotlib
 numexpr
-numba==0.53.0
+numba
 numpy
 pandas
 plotly
@@ -19,10 +19,9 @@ seaborn
 tensorflow
 tk
 tqdm
-pickle5
 pip
 lightkurve>=2
 eleanor
 kplr
-markupsafe==2.0.1
+markupsafe>=2.1.1
 wotan
