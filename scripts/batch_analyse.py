@@ -343,9 +343,7 @@ def run_lc(input_data) -> None:
             table = Table([table[time_col], table[flux_col], table[quality_col], table[flux_error_col]], 
                           names=['time', 'flux', 'quality', 'flux_error'])
 
-            print(table)
-
-            
+        
         result_str, save_data = processing(
             table,
             process_name,
