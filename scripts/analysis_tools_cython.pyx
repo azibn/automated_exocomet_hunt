@@ -23,7 +23,7 @@ from matplotlib import pyplot as plt
 from matplotlib.colorbar import Colorbar
 import matplotlib.patches as patches
 import matplotlib.gridspec as gs
-from post_processing import *
+from .post_processing import *
 from stats_calcs import *
 from wotan import flatten
 from scipy.stats import skewnorm
@@ -268,8 +268,8 @@ def import_lightcurve(file_path, flux='PDCSAP_FLUX', drop_bad_points=True,
         'columns': ['TIME', 'flux', 'SAP_QUALITY', 'SAP_FLUX_ERR'],
         'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'QUARTER', 'RA_OBJ', 'DEC_OBJ']
     },
-    'ktwo': {
-        'columns': ['TIME', 'flux', 'SAP_QUALITY', 'PDSCAP_FLUX_ERR'],
+    'K2': {
+        'columns': ['TIME', 'FCOR', 'SAP_QUALITY', 'PDSCAP_FLUX_ERR'],
         'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'CAMPAIGN', 'RA_OBJ', 'DEC_OBJ']
     },
     'spoc': {
@@ -284,17 +284,14 @@ def import_lightcurve(file_path, flux='PDCSAP_FLUX', drop_bad_points=True,
 
     }
 
-    #try:
     table_columns = pipeline_dict[pipeline]['columns']
     table = Table(scidata)[table_columns]
     info = [objdata[field] for field in pipeline_dict[pipeline]['info']]
-    #except KeyError:
-    #    print("Pipeline not specified. Exiting.")
-    #    return
+
     
     hdulist.close()
 
-    # this is a bit of a shithousery way to do this, but it works for now.
+    # this is a shithousery way to do this, but it works for now.
     if (pipeline == 'eleanor-lite') & (drop_bad_points == True):
         table = mad_cuts(table,info)
 
@@ -1084,10 +1081,8 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
         timestep = calculate_timestep(table)
         factor = ((1/48)/timestep)
         N = len(t)
-        ones = np.ones(N)
 
         ## fourier and Lomb-Scargle computations
-        A_mag = np.abs(np.fft.rfft(normalise_flux(flux)))
   
         freq, powers = LombScargle(t,flux).autopower() # think about that one
         peak_power = powers.max()
