@@ -23,7 +23,7 @@ from matplotlib import pyplot as plt
 from matplotlib.colorbar import Colorbar
 import matplotlib.patches as patches
 import matplotlib.gridspec as gs
-from .post_processing import *
+from post_processing import *
 from stats_calcs import *
 from wotan import flatten
 from scipy.stats import skewnorm
@@ -269,7 +269,7 @@ def import_lightcurve(file_path, flux='PDCSAP_FLUX', drop_bad_points=True,
         'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'QUARTER', 'RA_OBJ', 'DEC_OBJ']
     },
     'K2': {
-        'columns': ['TIME', 'FCOR', 'SAP_QUALITY', 'PDSCAP_FLUX_ERR'],
+        'columns': ['TIME', 'FLUX', 'QUALITY','FRAW_ERR'],
         'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'CAMPAIGN', 'RA_OBJ', 'DEC_OBJ']
     },
     'spoc': {
@@ -297,8 +297,10 @@ def import_lightcurve(file_path, flux='PDCSAP_FLUX', drop_bad_points=True,
 
     # Apply data cleaning using shared function
     # Determine column names based on pipeline
-    if 'kplr' in file_path or 'ktwo' in file_path:
+    if 'kplr' in file_path:
         quality_col = 'SAP_QUALITY'
+    elif 'k2' in file_path: 
+        quality_col = 'quality'
     else:
         quality_col = 'QUALITY'
     
