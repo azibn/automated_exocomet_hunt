@@ -39,7 +39,7 @@ pipeline_dict = {
     'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'QUARTER', 'RA_OBJ', 'DEC_OBJ']
 },
 'K2': {
-    'columns': ['TIME', 'flux', 'SAP_QUALITY', 'PDSCAP_FLUX_ERR'],
+    'columns': ['TIME', 'FCOR', 'SAP_QUALITY', 'PDSCAP_FLUX_ERR'],
     'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'CAMPAIGN', 'RA_OBJ', 'DEC_OBJ']
 },
 'TESS-SPOC': {
