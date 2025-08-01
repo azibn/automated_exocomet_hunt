@@ -1150,7 +1150,6 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
 
         ## little fix for string splitting between SPOC lightcurves and XRP ones
         result = search.split()
-        print(result)
         midtransit_time = float(result[4])
 
         if 'TIC' in search:

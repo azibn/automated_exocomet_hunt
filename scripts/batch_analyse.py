@@ -200,7 +200,6 @@ def download_lightcurve(target_id: str, mission: str = 'TESS', author: str = 'SP
     
     lightcurve = search_result.download()
     
-    print(type(lightcurve))
     return lightcurve
 
 
@@ -371,10 +370,10 @@ def run_lc(input_data) -> None:
             print(result_str)
             return
         
-        os.makedirs("outputs", exist_ok=True)
+        os.makedirs("outputs_k2", exist_ok=True)
         
         lock.acquire()
-        with open(os.path.join("outputs", args.of), "a") as output_file:
+        with open(os.path.join("outputs_k2", args.of), "a") as output_file:
             output_file.write(f"{result_str}\n")
         lock.release()
         
