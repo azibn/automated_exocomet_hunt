@@ -200,6 +200,10 @@ def download_lightcurve(target_id: str, mission: str = 'TESS', author: str = 'SP
     
     lightcurve = search_result.download()
     
+<<<<<<< Updated upstream
+=======
+   
+>>>>>>> Stashed changes
     return lightcurve
 
 
@@ -283,7 +287,6 @@ def run_lc(input_data) -> None:
                 table, lc_info = import_lightcurve(file_path, flux=args.f, pipeline=args.pipeline)
                 if (args.pipeline == 'eleanor-lite') and ('pca' in args.f.lower()):
                     table = table['TIME','PCA_FLUX','QUALITY','FLUX_ERR','FLUX_BKG','X_CENTROID','Y_CENTROID','CORR_FLUX']
-                else:
                     table = table[table.colnames[:5]]
             
             process_name = file_path
