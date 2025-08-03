@@ -846,8 +846,8 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=3,n_m_bg
         diffs = np.diff(time)
         
         for i,diff in enumerate(diffs):
-            # if diff > 0.75 and abs(t0-time[i]) < 1.: 
-            #     return -5,-5,-5,-5,-5,-5,-5,-5
+            if diff > 0.75 and abs(t0-time[i]) < 1.: 
+                return -5,-5,-5,-5,-5,-5,-5,-5
             
             ### after the data gap
             if diff > 0.5 and abs(t0 - time[i + 1]) < 1.5:
