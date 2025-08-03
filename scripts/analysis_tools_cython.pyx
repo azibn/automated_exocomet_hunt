@@ -31,6 +31,31 @@ from som_utils import *
 plt.rcParams['agg.path.chunksize'] = 10000
 warnings.filterwarnings("ignore")
 
+# Global pipeline dictionary for column and metadata mapping
+PIPELINE_DICT = {
+    'eleanor-lite': {
+        'columns': ['TIME', 'CORR_FLUX', 'QUALITY', 'FLUX_ERR','FLUX_BKG','X_CENTROID','Y_CENTROID','PCA_FLUX','RAW_FLUX'],
+        'info': ['TIC_ID', 'TMAG', 'SECTOR', 'CAMERA','CCD','RA_OBJ', 'DEC_OBJ']
+        # TMAG on eleanor-lite is set as 999 for all lightcurves. Don't know why.
+    },
+    'Kepler': {
+        'columns': ['TIME', 'flux', 'SAP_QUALITY', 'SAP_FLUX_ERR'],
+        'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'QUARTER', 'RA_OBJ', 'DEC_OBJ']
+    },
+    'K2': {
+        'columns': ['TIME', 'FLUX', 'QUALITY','FRAW_ERR'],
+        'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'CAMPAIGN', 'RA_OBJ', 'DEC_OBJ']
+    },
+    'TESS-SPOC': {
+        'columns': ['TIME', 'PDCSAP_FLUX', 'QUALITY','PDCSAP_FLUX_ERR','SAP_BKG'],
+        'info': ['TICID','TESSMAG','SECTOR','CAMERA', 'CCD','RA_OBJ','DEC_OBJ']
+    },
+    'eleanor-xrp': {
+        'columns': ['time', 'corr_flux', 'quality','flux_err','pca_flux'],
+        'info': ['TIC ID', 'RA', 'DEC', 'TESSMAG', 'Camera','CCD']
+    },
+}
+
 
 
 def download_lightcurve(file, path='.'):
@@ -258,35 +283,9 @@ def import_lightcurve(file_path, flux='PDCSAP_FLUX', drop_bad_points=True,
         print("file corrupted.")
         return
 
-    pipeline_dict = {
-    'eleanor-lite': {
-        'columns': ['TIME', 'CORR_FLUX', 'QUALITY', 'FLUX_ERR','FLUX_BKG','X_CENTROID','Y_CENTROID','PCA_FLUX','RAW_FLUX'],
-        'info': ['TIC_ID', 'TMAG', 'SECTOR', 'CAMERA','CCD','RA_OBJ', 'DEC_OBJ']
-        # TMAG on eleanor-lite is set as 999 for all lightcurves. Don't know why.
-    },
-    'kplr': {
-        'columns': ['TIME', 'flux', 'SAP_QUALITY', 'SAP_FLUX_ERR'],
-        'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'QUARTER', 'RA_OBJ', 'DEC_OBJ']
-    },
-    'K2': {
-        'columns': ['TIME', 'FLUX', 'QUALITY','FRAW_ERR'],
-        'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'CAMPAIGN', 'RA_OBJ', 'DEC_OBJ']
-    },
-    'spoc': {
-        'columns': ['TIME', 'PDCSAP_FLUX', 'QUALITY','PDCSAP_FLUX_ERR','SAP_BKG'],
-        'info': ['TICID','TESSMAG','SECTOR','CAMERA', 'CCD','RA_OBJ','DEC_OBJ']
-    },
-    'eleanor-xrp': {
-        'columns': ['time', 'corr_flux', 'quality','flux_err','pca_flux'],
-        'info': ['TIC ID', 'RA', 'DEC', 'TESSMAG', 'Camera','CCD']
-    },
-
-
-    }
-
-    table_columns = pipeline_dict[pipeline]['columns']
+    table_columns = PIPELINE_DICT[pipeline]['columns']
     table = Table(scidata)[table_columns]
-    info = [objdata[field] for field in pipeline_dict[pipeline]['info']]
+    info = [objdata[field] for field in PIPELINE_DICT[pipeline]['info']]
 
     
     hdulist.close()
@@ -841,16 +840,17 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=3,n_m_bg
         t0 = time[n]
         
         ## the time array without interpolation is used to find any data gaps from distance of data points along time axis.
-        time_ori = time[real == 1]
-        diffs = np.diff(time_ori)
+        ### THE BELOW IS A TESS-SPECIFIC CONDITION. I NEED TO FIGURE OUT A WAY TO MAKE THIS PIPELINE DEPENDENT
+        ## time_ori = time[real == 1]
+        ## diffs = np.diff(time_ori)
+        diffs = np.diff(time)
         
-        ### if a transit is less than 0.5 days within 2 days before or after transit centre, remove.
         for i,diff in enumerate(diffs):
-            if diff > 0.5 and abs(t0-time_ori[i]) < 1.5: 
-                return -5,-5,-5,-5,-5,-5,-5,-5
+            # if diff > 0.75 and abs(t0-time[i]) < 1.: 
+            #     return -5,-5,-5,-5,-5,-5,-5,-5
             
             ### after the data gap
-            if diff > 0.5 and abs(t0 - time_ori[i + 1]) < 1.5:
+            if diff > 0.5 and abs(t0 - time[i + 1]) < 1.5:
                 return -6,-6,-6,-6,-6,-6,-6,-6
             
 
@@ -1007,7 +1007,7 @@ def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     final_flux *= real
     return final_flux, periodicnoise_ls2, original_masked_flux
 
-def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_cutouts_directory_name='som_cutouts',make_plots=False,twostep=False,plots_dir='plots/'): 
+def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_cutouts_directory_name='som_cutouts',make_plots=False,twostep=False,plots_dir='plots/',pipeline=None): 
     """
     
     Function: The main bulk of the search algorithm.
@@ -1023,6 +1023,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
       and a zoomed-in cut for potential candidates.
     :plots_dir: the directory to save the plots in. Default is 'plots/'.
     :twostep: Perform two-step smoothing (compatible with Fourier/Lomb-Scargle methods only). Default is False.
+    :pipeline: Pipeline used to process the lightcurve ('eleanor-lite', 'spoc', 'kplr', 'K2', 'eleanor-xrp'). If None, auto-detects from column names. Default is None.
 
     Returns:
     :result_str: A string containing the result of the search algorithm.
@@ -1158,11 +1159,12 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             final_result = [val for val in search.split() if val != 'TIC']
 
         final_result.append(lc_info[2])
+        print(final_result)
         if make_plots:
             try:
-                plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info, trend_flux)
+                plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info, trend_flux, pipeline=pipeline)
             except:
-                plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info)
+                plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info, pipeline=pipeline)
 
     else:
         search = file_basename+' 0 0 0 0 0 0 0 0 notEnoughData'
@@ -1260,16 +1262,62 @@ def run_test_statistic(flux, factor, timestep, t, window_factor=60):
     return m,n,T1,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts
 
 
-def plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info, trend_flux=None):
+def detect_pipeline(table):
+    """
+    Auto-detect pipeline from column names in the table.
+    
+    Parameters:
+    :table: Lightcurve table with column names
+    
+    Returns:
+    :pipeline (str): Detected pipeline name
+    """
+    columns = set(table.colnames)
+    
+    # eleanor-lite has distinctive columns
+    if 'FLUX_BKG' in columns and 'X_CENTROID' in columns and 'PCA_FLUX' in columns:
+        return 'eleanor-lite'
+    
+    # SPOC has SAP_BKG and PDCSAP_FLUX
+    elif 'SAP_BKG' in columns and 'PDCSAP_FLUX' in columns:
+        return 'spoc'
+    
+    # Kepler has distinctive 'flux' (lowercase) and SAP_QUALITY
+    elif 'flux' in columns and 'SAP_QUALITY' in columns:
+        return 'kplr'
+    
+    # K2 has FLUX (uppercase) and typically FRAW_ERR
+    elif 'FLUX' in columns and 'FRAW_ERR' in columns:
+        return 'K2'
+    
+    # eleanor-xrp has lowercase column names
+    elif 'corr_flux' in columns and 'pca_flux' in columns:
+        return 'eleanor-xrp'
+    
+    # Default fallback
+    return 'eleanor-lite'
+
+
+def plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info, trend_flux=None, pipeline=None):
     """
     Creates comprehensive plots for lightcurve analysis.
+    
+    Parameters:
+    :pipeline (str): Pipeline used to process the lightcurve. If None, auto-detects from column names.
     """
+    # Auto-detect pipeline if not provided
+    if pipeline is None:
+        pipeline = detect_pipeline(original_table)
+    
+    # Get pipeline-specific column names
+    pipeline_columns = PIPELINE_DICT[pipeline]['columns']
+    
     try:
         os.makedirs("plots")
     except FileExistsError:
         pass
         
-    with open('colnames.json', 'r', encoding='utf-8') as f:
+    with open('scripts/colnames.json', 'r', encoding='utf-8') as f:
         check = f.read()
         columns = json.loads(check)
         columns = columns['column_names']
@@ -1280,15 +1328,15 @@ def plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, f
     gs = fig.add_gridspec(23,3 ,hspace=1.5,wspace=0.2)
     ax0 = plt.subplot(gs[0:1,:]) 
     ax0.axis('off')
-    search_table = ax0.table(cellText=[final_result[1:14]], loc='center', colLabels=columns[1:14])
-    search_table.auto_set_font_size(False)
-    search_table.set_fontsize(10)
-    ax00 = plt.subplot(gs[1:2,:]) 
-    ax00.axis('off')
-    search2 = ax00.table(cellText=[final_result[13:]], loc='center', colLabels=columns[13:])
-    search2.auto_set_font_size(False)
-    search2.set_fontsize(10)
-    ax00.axis('off')
+    # search_table = ax0.table(cellText=[final_result[1:14]], loc='center', colLabels=columns[1:14])
+    # search_table.auto_set_font_size(False)
+    # search_table.set_fontsize(10)
+    # ax00 = plt.subplot(gs[1:2,:]) 
+    # ax00.axis('off')
+    # search2 = ax00.table(cellText=[final_result[13:]], loc='center', colLabels=columns[13:])
+    # search2.auto_set_font_size(False)
+    # search2.set_fontsize(10)
+    # ax00.axis('off')
 
     ax1 = plt.subplot(gs[2:5,:2]) 
     ax1.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[original_table.colnames[1]]), s=10,alpha=0.5,zorder=1,label='original lightcurve')
@@ -1326,7 +1374,7 @@ def plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, f
     ax3 = plt.subplot(gs[5:8, :2])
     im = ax3.imshow(
         T1,
-        origin="bottom",
+        origin="lower",
         extent=ax1.get_xlim() + (0, 2.5),
         aspect="auto",
         cmap="rainbow",
@@ -1334,33 +1382,108 @@ def plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, f
     ax3.set_ylabel("Transit width (days)") 
     plt.setp(ax3.get_xticklabels(), visible=False) 
 
-    ax4 = plt.subplot(gs[8:11, :2],sharex=ax1)
-
-    bkg = original_table['FLUX_BKG']
     original_time = original_table[original_table.colnames[0]]
-    ax4.scatter(original_time,bkg,s=10)
+    
+    # Fixed subplot positions - always create these subplots to maintain layout
+    # Background flux subplot (fixed position gs[8:11, :2])
+    ax4 = plt.subplot(gs[8:11, :2],sharex=ax1)
     ax4.set_ylabel('FLUX_BKG')
     ax4.set_xlim(ax1.get_xlim())
     plt.setp(ax4.get_xticklabels(), visible=False)
+    
+    # Find and plot background flux if available
+    bkg_col = None
+    for col in pipeline_columns:
+        if 'BKG' in col.upper():
+            bkg_col = col
+            break
+    
+    try:
+        if bkg_col:
+            bkg = original_table[bkg_col]
+            ax4.scatter(original_time,bkg,s=10)
+            ax4.set_ylabel(bkg_col)
+    except:
+        # Keep empty subplot with just the axis labels
+        ax4.text(0.5, 0.5, 'No background data', ha='center', va='center', transform=ax4.transAxes)
+    
+    # X centroid subplot (fixed position gs[11:14, :2])
     ax5 = plt.subplot(gs[11:14, :2],sharex=ax1)
-    x_cen = original_table['X_CENTROID']
-    ax5.scatter(original_time, x_cen, s=10)
     ax5.set_ylabel('X_CEN')
     ax5.set_xlim(ax1.get_xlim())
     plt.setp(ax5.get_xticklabels(), visible=False)
+    
+    # Find and plot X centroid if available
+    x_centroid_col = None
+    for col in pipeline_columns:
+        if 'X_CENTROID' in col.upper():
+            x_centroid_col = col
+            break
+    
+    try:
+        if x_centroid_col:
+            x_cen = original_table[x_centroid_col]
+            ax5.scatter(original_time, x_cen, s=10)
+    except:
+        # Keep empty subplot with just the axis labels
+        ax5.text(0.5, 0.5, 'No X centroid data', ha='center', va='center', transform=ax5.transAxes)
 
+    # Y centroid subplot (fixed position gs[14:17, :2])
     ax6 = plt.subplot(gs[14:17, :2])
-    y_cen = original_table['Y_CENTROID']
-    ax6.scatter(original_time, y_cen, s=10)
     ax6.set_ylabel('Y_CEN')
     ax6.tick_params(axis='x', labelbottom=True) 
     ax6.set_xlim(ax1.get_xlim())
     ax6.set_xticklabels([])
+    
+    # Find and plot Y centroid if available
+    y_centroid_col = None
+    for col in pipeline_columns:
+        if 'Y_CENTROID' in col.upper():
+            y_centroid_col = col
+            break
+    
+    try:
+        if y_centroid_col:
+            y_cen = original_table[y_centroid_col]
+            ax6.scatter(original_time, y_cen, s=10)
+    except:
+        # Keep empty subplot with just the axis labels
+        ax6.text(0.5, 0.5, 'No Y centroid data', ha='center', va='center', transform=ax6.transAxes)
 
+    # Final flux comparison plot (fixed position gs[17:, :])
     ax7 = plt.subplot(gs[17:, :],sharex=ax1)
 
-    ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table['CORR_FLUX']), s=10,alpha=0.5,zorder=1,label='corrected flux')
-    ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table['PCA_FLUX'])-0.025, s=10,alpha=0.5,zorder=1,label='pca flux')
+    # Find corrected flux column (CORR, PDCSAP, or just FLUX)
+    corr_flux_col = None
+    for col in pipeline_columns:
+        if 'CORR' in col.upper() or 'PDCSAP' in col.upper() or col.upper() == 'FLUX':
+            corr_flux_col = col
+            break
+    
+    # Find PCA flux column
+    pca_flux_col = None
+    for col in pipeline_columns:
+        if 'PCA' in col.upper():
+            pca_flux_col = col
+            break
+
+    # Plot corrected flux if available
+    try:
+        if corr_flux_col:
+            ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[corr_flux_col]), 
+                       s=10,alpha=0.5,zorder=1,label='corrected flux')
+    except:
+        pass
+    
+    # Plot PCA flux if available
+    try:
+        if pca_flux_col:
+            ax7.scatter(original_table[original_table.colnames[0]], normalise_flux(original_table[pca_flux_col])-0.025, 
+                       s=10,alpha=0.5,zorder=1,label='pca flux')
+    except:
+        pass
+    
+    # Always plot smoothened flux
     ax7.scatter(t[real==1], flux[real==1]-0.05,label='smoothened flux',alpha=0.9,zorder=3,s=10)
     ax7.legend()
 
@@ -1400,7 +1523,6 @@ def plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, f
             suffix += 1
 
     plt.show()
-    plt.close()
 
 
 def save_unique_file(lc_info, som_lightcurve,som_cutouts_directory_name='som_cutouts'):

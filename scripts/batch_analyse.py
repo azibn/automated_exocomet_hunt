@@ -28,30 +28,63 @@ from analysis_tools_cython import (
 os.environ["OMP_NUM_THREADS"] = "1"
 warnings.filterwarnings("ignore")
 
-pipeline_dict = {
-'eleanor-lite': {
+# Define base pipeline configurations
+# 
+# Note: Not all pipelines have been adapted yet. Additional pipelines can be added:
+# - K2SFF
+# - QLP (Quick Look Pipeline) 
+# - Custom pipelines
+# Simply add new config dictionaries with 'columns' and 'info' fields.
+
+_eleanor_lite_config = {
     'columns': ['TIME', 'CORR_FLUX', 'QUALITY', 'FLUX_ERR','FLUX_BKG','X_CENTROID','Y_CENTROID','PCA_FLUX','RAW_FLUX'],
     'info': ['TIC_ID', 'TMAG', 'SECTOR', 'CAMERA','CCD','RA_OBJ', 'DEC_OBJ']
     # TMAG on eleanor-lite is set as 999 for all lightcurves. Don't know why.
-},
-'kepler': {
+}
+
+_kepler_config = {
     'columns': ['TIME', 'flux', 'SAP_QUALITY', 'SAP_FLUX_ERR'],
     'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'QUARTER', 'RA_OBJ', 'DEC_OBJ']
-},
-'K2': {
+}
+
+_k2_config = {
     'columns': ['TIME', 'FCOR', 'SAP_QUALITY', 'PDSCAP_FLUX_ERR'],
     'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'CAMPAIGN', 'RA_OBJ', 'DEC_OBJ']
-},
-'TESS-SPOC': {
+}
+
+_tess_spoc_config = {
     'columns': ['TIME', 'PDCSAP_FLUX', 'QUALITY','PDCSAP_FLUX_ERR','SAP_BKG'],
     'info': ['TICID','TESSMAG','SECTOR','CAMERA', 'CCD','RA_OBJ','DEC_OBJ']
-},
-'eleanor-xrp': {
-    'columns': ['time', 'corr_flux', 'quality','flux_err','pca_flux'],
-    'info': ['TIC ID', 'RA', 'DEC', 'TESSMAG', 'Camera','CCD']
-},
+}
 
+# _eleanor_xrp_config = {
+#     'columns': ['time', 'corr_flux', 'quality','flux_err','pca_flux'],
+#     'info': ['TIC ID', 'RA', 'DEC', 'TESSMAG', 'Camera','CCD']
+# }
 
+pipeline_dict = {
+    # Eleanor-lite aliases
+    'eleanor-lite': _eleanor_lite_config,
+    'ELEANOR-LITE': _eleanor_lite_config,
+    'eleanor': _eleanor_lite_config,
+    
+    # Kepler aliases
+    'kepler': _kepler_config,
+    'Kepler': _kepler_config,
+    'kplr': _kepler_config,
+    
+    # K2 aliases
+    'K2': _k2_config,
+    'k2': _k2_config,
+    'ktwo': _k2_config,
+    
+    # TESS-SPOC aliases
+    'TESS-SPOC': _tess_spoc_config,
+    'tess-spoc': _tess_spoc_config,
+    'spoc': _tess_spoc_config,
+    
+    # Legacy (commented out, not in use)
+    # 'eleanor-xrp': _eleanor_xrp_config,
 }
 
 def setup_argument_parser() -> argparse.ArgumentParser:
@@ -157,7 +190,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def download_lightcurve(target_id: str, mission: str = 'TESS', author: str = 'SPOC', sector: int = None):
+def download_lightcurve(target_id: str, mission: str = 'TESS', author: str = 'TESS-SPOC', sector: int = None):
     """
     Download lightcurve using lightkurve for a given target.
     
@@ -171,39 +204,35 @@ def download_lightcurve(target_id: str, mission: str = 'TESS', author: str = 'SP
         Lightcurve table for processing
     """
     if mission == 'TESS':
-        target_name = f"TIC {target_id}"
+        target_name = f"{target_id}"
     elif mission == 'Kepler':
-        target_name = f"KIC {target_id}"
+        target_name = f"{target_id}"
     elif mission == 'K2':
-        target_name = f"EPIC {target_id}"
+        target_name = f"{target_id}"
     else:
         target_name = target_id
     
     print(f"Searching for {target_name} lightcurves with mission={mission}, author={author}")
     
-    search_result = lk.search_lightcurve(target_name, mission=mission, author=author)
-    
-    if len(search_result) == 0:
-        raise ValueError(f"No lightcurves found for {target_name}")
-    
-    # Filter by sector/quarter/campaign if specified
+    # Search with sector/quarter/campaign filter if specified
     if sector is not None:
         if mission == 'TESS':
-            search_result = lk.search_lightcurve(target_name, mission=mission, author=author,sector=sector)
+            search_result = lk.search_lightcurve(target_name, mission=mission, author=author, sector=sector)
         elif mission == 'Kepler':
-            search_result = lk.search_lightcurve(target_name, mission=mission, author=author,quarter=sector)
+            search_result = lk.search_lightcurve(target_name, mission=mission, author=author, quarter=sector)
         elif mission == 'K2':
-            search_result = lk.search_lightcurve(target_name, mission=mission, author=author,campaign=sector)
+            search_result = lk.search_lightcurve(target_name, mission=mission, author=author, campaign=sector)
+    else:
+        search_result = lk.search_lightcurve(target_name, mission=mission, author=author)
     
     if len(search_result) == 0:
-        raise ValueError(f"No lightcurves found for {target_name} in sector/quarter/campaign {sector}")
+        if sector is not None:
+            raise ValueError(f"No lightcurves found for {target_name} in {mission} sector/quarter/campaign {sector}")
+        else:
+            raise ValueError(f"No lightcurves found for {target_name}")
     
     lightcurve = search_result.download()
     
-<<<<<<< Updated upstream
-=======
-   
->>>>>>> Stashed changes
     return lightcurve
 
 
@@ -355,6 +384,7 @@ def run_lc(input_data) -> None:
             twostep=args.step,
             som_cutouts=args.som,
             plots_dir=args.plots_dir,
+            pipeline=args.pipeline,
         )
 
         if args.metadata:
