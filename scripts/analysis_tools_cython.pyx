@@ -671,6 +671,35 @@ def comet_curve2(x, A, mu, sigma, tail, shape=3):
                          lambda t: comet_ingress(t, A, mu, sigma, shape),
                          lambda t: A*np.exp(-abs(t-mu)/tail)])
 
+def comet_curve2_fit(x, y):
+    """
+    Fit an asymmetric comet-like transit curve with exponential ingress to data using curve_fit.
+    
+    Parameters:
+    :x (array): Time values
+    :y (array): Flux values
+    
+    Returns:
+    :params (array): Fitted parameters [amplitude, center_time, sigma, tail, shape]
+    :cov (array): Covariance matrix of the fitted parameters
+    """
+    # Initial parameters guess
+    i = np.argmax(y)
+    
+    width = x[-1] - x[0]
+    
+    # Initial parameter guesses: [A, mu, sigma, tail, shape]
+    params_init = [y[i], x[i], width/3, width/3, 3.0]
+    
+    # Parameter bounds
+    params_bounds = [
+        [0, x[0], 0, 0, 0.1],   
+        [np.inf, x[-1], width/2, width/2, 5.0]  
+    ]
+    
+    params, cov = curve_fit(comet_curve2, x, y, params_init, bounds=params_bounds)
+    return params, cov
+
 
 def skewed_gaussian_curve_fit(x, y, y_err, width,gaussian_params):
     #, gaussian_params):
@@ -805,7 +834,7 @@ def cutout(m,n,table,n_m_bg_start=3,n_m_bg_scale_factor=1):
 
     return table[cutout_before:cutout_after]
 
-def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=3,n_m_bg_scale_factor=1):
+def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=5,n_m_bg_scale_factor=1):
     """Analyse transit shape by fitting symmetric and asymmetric profiles to determine comet-like characteristics.
     
     This function extracts a lightcurve cutout around a transit event and fits three models:
