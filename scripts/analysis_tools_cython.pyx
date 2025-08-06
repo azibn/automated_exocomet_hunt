@@ -658,6 +658,20 @@ def comet_curve_fit(x,y):
     params,cov = curve_fit(comet_curve,x,y,params_init,bounds=params_bounds)
     return params, cov
 
+
+def comet_ingress(x, A, mu, sigma, shape):
+    '''exponential comet ingress, `shape` controls curviness'''
+    sh = shape/sigma
+    norm = 1 - np.exp(-sh*sigma)
+    return A/norm*(1 - np.exp(-sh*(x-mu+sigma)))
+
+def comet_curve2(x, A, mu, sigma, tail, shape=3):
+    return np.piecewise(x, [x<(mu-sigma), np.logical_and(x>=(mu-sigma), x<mu), x>=mu],
+                        [0,
+                         lambda t: comet_ingress(t, A, mu, sigma, shape),
+                         lambda t: A*np.exp(-abs(t-mu)/tail)])
+
+
 def skewed_gaussian_curve_fit(x, y, y_err, width,gaussian_params):
     #, gaussian_params):
     """
@@ -792,24 +806,73 @@ def cutout(m,n,table,n_m_bg_start=3,n_m_bg_scale_factor=1):
     return table[cutout_before:cutout_after]
 
 def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=3,n_m_bg_scale_factor=1):
-    """Fit both symmetric and comet-like transit profiles and compare fit.
-
-    original time: time before interpolation step
-
+    """Analyse transit shape by fitting symmetric and asymmetric profiles to determine comet-like characteristics.
+    
+    This function extracts a lightcurve cutout around a transit event and fits three models:
+    1. Symmetric Gaussian profile
+    2. Comet-like asymmetric profile  
+    3. Skewed Gaussian profile
+    
+    The asymmetry score compares the fit quality to identify potential exocomet transits.
+    
+    Parameters:
+    -----------
+    m : int
+        Transit duration in data points
+    n : int
+        Index of transit centre/minimum in the lightcurve
+    time : array_like
+        Time array (after interpolation)
+    flux : array_like
+        Normalised flux measurements
+    quality : array_like
+        Data quality flags
+    real : array_like
+        Original time array (before interpolation)
+    flux_error : array_like
+        Flux measurement uncertainties
+    width : float
+        Expected transit width for initial parameter estimates
+    n_m_bg_start : int, optional
+        Number of transit durations before centre for cutout start (default: 3)
+    n_m_bg_scale_factor : int, optional
+        Scale factor for cutout extent after centre (default: 1)
+    
     Returns:
-    (1) Asymmetry: ratio of (errors squared)
-    Possible errors and return values:
-    -1 : Divide by zero as comet profile is exact fit
-    -2 : Too close to edge of light curve to fit profile
-    -3 : Unable to fit model (e.g. timeout)
-    -4 : Too much empty space in overall light curve or near dip
-    -5 : Transit event too close to (before) data gap, within 1.5 days of gap.
-    -6 : Transit event too close to (after) data gap, within 1.5 day after gap.
-    (2,3) Widths of comet curve fit segments.
-    info: t, x, q, fit1 and fit3 are the transit shape elements 
-
-    Asymmetry score, 
-
+    --------
+    tuple of 8 elements:
+        - asymmetry_score : float
+            Ratio of symmetric to skewed Gaussian fit errors (lower = more asymmetric)
+        - amplitude : float
+            Gaussian amplitude parameter
+        - sigma : float  
+            Gaussian width parameter
+        - skewness : float
+            Skewness parameter (positive = tail after transit)
+        - skewness_error : float
+            Uncertainty in skewness parameter
+        - depth : float
+            Transit depth (minimum flux value)
+        - data_arrays : list
+            [time, flux, quality, flux_error, background_level] for the cutout
+        - fit_arrays : list
+            [symmetric_fit, comet_fit, skewed_fit] model curves
+    
+    Error codes (returned as tuple of 8 identical values):
+    ----------------------------------------------------
+    -1 : Zero division error in asymmetry calculation
+    -2 : Transit too close to lightcurve edges for proper cutout
+    -3 : Model fitting failed (numerical issues, timeout, etc.)
+    -4 : Excessive gaps in lightcurve data (>1.5x expected coverage)
+    -5 : Transit within 1.0 day before a data gap (>0.75 day gap)
+    -6 : Transit within 1.5 days after a data gap (>0.5 day gap)
+    
+    Notes:
+    ------
+    - Background trend is removed using linear interpolation between cutout edges
+    - Gap detection thresholds are optimised for TESS data cadence
+    - time_ori was used for TESS data gap detection in original implementation
+    - Skewed Gaussian provides the primary asymmetry measurement
     """
     ## how many transit widths to take the general linear trend from. start is 1/4 length of cutout from beginning, end is 1 from end.
     #first_index = n - (n_m_bg_start*n)
@@ -836,21 +899,19 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=3,n_m_bg
             print(-4)
             return -4,-4,-4,-4,-4,-4,-4, -4
         
-        # min time from T-statistic
         t0 = time[n]
         
         ## the time array without interpolation is used to find any data gaps from distance of data points along time axis.
-        ### THE BELOW IS A TESS-SPECIFIC CONDITION. I NEED TO FIGURE OUT A WAY TO MAKE THIS PIPELINE DEPENDENT
-        ## time_ori = time[real == 1]
-        ## diffs = np.diff(time_ori)
-        diffs = np.diff(time)
+        time_ori = time[real == 1]
+        diffs = np.diff(time_ori)
+        ##diffs = np.diff(time)
         
         for i,diff in enumerate(diffs):
-            if diff > 0.75 and abs(t0-time[i]) < 1.: 
+            if diff > 0.5 and abs(t0-time_ori[i]) < 1.: 
                 return -5,-5,-5,-5,-5,-5,-5,-5
             
             ### after the data gap
-            if diff > 0.5 and abs(t0 - time[i + 1]) < 1.5:
+            if diff > 0.5 and abs(t0 - time_ori[i + 1]) < 1.5:
                 return -6,-6,-6,-6,-6,-6,-6,-6
             
 
