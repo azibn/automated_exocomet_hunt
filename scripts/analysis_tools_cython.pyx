@@ -967,12 +967,12 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=5,n_m_bg
             return -3,-3,-3,-3,-3,-3,-3, -3
 
         fit1 = -gauss(t,*params1)
-        fit2 = -comet_curve(t,*params2)
+        fit2 = -comet_curve2(t,*params2)
         fit3 = -skewed_gaussian(t,*params3)
         depth = fit3.min() # depth of comet (based on minimum point; not entirely accurate, but majority of the time true
         #min_time = t[np.argmin(x)] # time of midtransit/at minimum point
 
-        scores = [score_fit(x,fit) for fit in [fit1,fit3]] # changed for the skewed gaussian fit
+        scores = [score_fit(x,fit) for fit in [fit1,fit2]] # changed for the skewed gaussian fit
         if scores[1] > 0:
             skewness_error = np.sqrt(np.diag(pcov3)[3])
             # params3[0] is the amplitude of the gaussian...
