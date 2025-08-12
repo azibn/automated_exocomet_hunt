@@ -23,8 +23,6 @@ from matplotlib import pyplot as plt
 from matplotlib.colorbar import Colorbar
 import matplotlib.patches as patches
 import matplotlib.gridspec as gs
-from post_processing import *
-from stats_calcs import *
 from wotan import flatten
 from scipy.stats import skewnorm
 from som_utils import *
@@ -43,7 +41,8 @@ PIPELINE_DICT = {
         'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'QUARTER', 'RA_OBJ', 'DEC_OBJ']
     },
     'K2': {
-        'columns': ['TIME', 'FLUX', 'QUALITY','FRAW_ERR'],
+        'columns': ['TIME', 'FCOR', 'QUALITY','FRAW_ERR'],
+
         'info': ['OBJECT', 'KEPLERID', 'KEPMAG', 'CAMPAIGN', 'RA_OBJ', 'DEC_OBJ']
     },
     'TESS-SPOC': {
@@ -694,7 +693,7 @@ def comet_curve2_fit(x, y):
     # Parameter bounds
     params_bounds = [
         [0, x[0], 0, 0, 0.1],   
-        [np.inf, x[-1], width/2, width/2, 5.0]  
+        [np.inf, x[-1], width/2, width/2, 6.0]  
     ]
     
     params, cov = curve_fit(comet_curve2, x, y, params_init, bounds=params_bounds)
@@ -834,7 +833,7 @@ def cutout(m,n,table,n_m_bg_start=3,n_m_bg_scale_factor=1):
 
     return table[cutout_before:cutout_after]
 
-def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=5,n_m_bg_scale_factor=1):
+def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=3,n_m_bg_scale_factor=1):
     """Analyse transit shape by fitting symmetric and asymmetric profiles to determine comet-like characteristics.
     
     This function extracts a lightcurve cutout around a transit event and fits three models:
@@ -934,9 +933,10 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=5,n_m_bg
         time_ori = time[real == 1]
         diffs = np.diff(time_ori)
         ##diffs = np.diff(time)
-        
+        if (t[-1]-t[0]) / (np.median(np.diff(t)) * len(t)) > 1.5:
+            return -4,-4,-4,-4,-4,-4,-4, -4
         for i,diff in enumerate(diffs):
-            if diff > 0.5 and abs(t0-time_ori[i]) < 1.: 
+            if diff > 0.5 and abs(t0-time_ori[i]) < 2.: 
                 return -5,-5,-5,-5,-5,-5,-5,-5
             
             ### after the data gap
@@ -960,7 +960,7 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=5,n_m_bg
         try:
              # Perform Gaussian fitting
             params1, pcov1 = single_gaussian_curve_fit(t, -x)
-            params2, pcov2 = comet_curve_fit(t, -x)
+            params2, pcov2 = comet_curve2_fit(t, -x)
             params3, pcov3 = skewed_gaussian_curve_fit(t, -x, fe, width, params1)
 
         except:
