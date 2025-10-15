@@ -1,11 +1,28 @@
 #cython: language_level=3
 
 import os
-import math
-import eleanor
 import sys
+
+# Add the scripts directory to Python path for imports
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+if _current_dir not in sys.path:
+    sys.path.insert(0, _current_dir)
+
+import math
+# import eleanor  # Removed - not needed
 import lightkurve as lk
-import xrpdata
+
+# Import xrpdata with explicit path handling
+try:
+    import xrpdata
+except ImportError:
+    import sys
+    import os
+    # Try to add the scripts directory if not already there
+    scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts')
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import xrpdata
 import warnings
 import json
 import pandas as pd
@@ -25,7 +42,10 @@ import matplotlib.patches as patches
 import matplotlib.gridspec as gs
 from wotan import flatten
 from scipy.stats import skewnorm
-from som_utils import *
+try:
+    from .som_utils import *
+except ImportError:
+    from som_utils import *
 plt.rcParams['agg.path.chunksize'] = 10000
 warnings.filterwarnings("ignore")
 
@@ -1407,7 +1427,7 @@ def plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, f
     except FileExistsError:
         pass
         
-    with open('scripts/colnames.json', 'r', encoding='utf-8') as f:
+    with open(os.path.join(_current_dir, 'colnames.json'), 'r', encoding='utf-8') as f:
         check = f.read()
         columns = json.loads(check)
         columns = columns['column_names']

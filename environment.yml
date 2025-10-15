@@ -2,6 +2,8 @@ name: exocomet
 channels:
   - conda-forge
   - defaults
+platforms:
+  - arm64
 dependencies:
   - python=3.8
   - astropy
@@ -11,7 +13,6 @@ dependencies:
   - cython
   - gfortran
   - jupyterlab
-  - libgfortran
   - matplotlib
   - numexpr
   - numba

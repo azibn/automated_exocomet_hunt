@@ -22,6 +22,7 @@ build/
 bin/micromamba
 
 # Data files and folders
+archive/
 *.csv
 data/
 metadata/
@@ -39,6 +40,7 @@ target_lists/
 tic_project/
 project_targets/
 copy_log/
+xrpdata
 
 # Generated plots and outputs
 plots/
@@ -77,3 +79,4 @@ s1-reversed.txt
 s1-reversedv3.txt
 s7-reversed-spocv2.txt
 scripts/candidatesv2.txt
+eleanor-lite_combined-corrflux.txt

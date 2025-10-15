@@ -3,7 +3,17 @@ import numpy as np
 import glob
 import json
 import os
-from analysis_tools_cython import *
+import sys
+
+# Add the scripts directory to Python path for imports
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+if _current_dir not in sys.path:
+    sys.path.insert(0, _current_dir)
+
+try:
+    from .analysis_tools_cython import *
+except ImportError:
+    from analysis_tools_cython import *
 
 
 def get_output(file_path, include_stats=True):
@@ -25,7 +35,7 @@ def get_output(file_path, include_stats=True):
 
 
         ### column names ###
-    with open("colnames.json", "r", encoding="utf-8") as f:
+    with open(os.path.join(_current_dir, "colnames.json"), "r", encoding="utf-8") as f:
         check = f.read()
         columns = json.loads(check)
         columns = columns["column_names"]
