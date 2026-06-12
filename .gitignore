@@ -1,53 +1,31 @@
-# Build files
-#analysis_tools_cython.c*
-build
-.nfs*
-.vscode/
-
-# old Kepler files
-archive_analyse.sh
-
-# Jupyter notebooks
-#notebooks/
-
-# Data folders
-betapic/
-kepler/
-data/
-catalogs/
-candidates/
-umap_projections/
-mastDownload/
-injection_recovery_*
-test_lightcurves/
-
-# poster
-poster/
-
-# extra
-injection_tools.py
-lookup_checker.py
-lost_ids.txt
-__pycache__
-
-# xrp files
-qstat.py
-
-# output files
-output*
-
-# batch_analyse_v2
-batch_reanalyse_asym.py
-
-# Temp vim files
-*.swp
-
-# other
+# System files
 .DS_Store
+.nfs*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jupyter
 .ipynb_checkpoints/
-.idea/
-mastDownload/
-maxsector.py
-ir_plots/
-ir_plotsv2/
-gif/
+
+# Build artifacts
+build/
+bin/micromamba
+*.so
+scripts/analysis_tools_cython.c
+
+# Local data, results and figures (not tracked)
+archive/
+data/
+outputs/
+plots/
+archive/
+
+# Exploratory notebooks kept local
+notebooks/
+scripts/som
+scripts/xrpdata
