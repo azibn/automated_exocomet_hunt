@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 import pandas as pd
 import os
-import data
+import xrpdata as data
 
 
 class LightCurveCollection:
@@ -292,7 +292,9 @@ def load_masked_lc_wrapper(fps, sec, cam):
     lightcurve import
     """
     # hardcoded references to files for use by this work.
-    mad_mask = "./data/threshold_mask.json"
+    mad_mask = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "xrpdata", "threshold_mask.json"
+    )
     # This is bad... but it works...
     global threshold_mask
     with open(mad_mask, "r") as file:

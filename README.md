@@ -1,119 +1,81 @@
+# Automated Exocomet Hunt
+
 Code for automated detection of exocomets in light curves.
 
-**Note: This work has been mainly developed with focus on the internal lightcurves in the collaboration. However, they should still be compatible with lightcurves obtained via MAST or `lightkurve`.**
+**Note: This work has been mainly developed with focus on the internal lightcurves in the collaboration. However, the scripts should still be compatible with lightcurves obtained via MAST or `lightkurve`.**
+
+## Repository structure
+
+```
+.
+├── scripts/            # Main pipeline and analysis scripts
+│   ├── analysis_tools_cython.pyx   # Core search algorithms (Cython)
+│   ├── batch_analyse.py            # Main entry point for running the search
+│   ├── som/                        # Self-organising map tools
+│   └── xrpdata/                    # Package data (bad times, MAD tables, masks)
+├── notebooks/          # Analysis and exploration notebooks
+├── data/               # Local light curve data and catalogues (not tracked)
+├── outputs/            # Search results (not tracked)
+├── plots/              # Generated figures (not tracked)
+├── archive/            # Old material, posters (not tracked)
+├── environment.yml     # Conda environment
+├── setup.py            # Builds the Cython extension
+└── make                # Shortcut for `./setup.py build_ext --inplace`
+```
 
 ## Installation
-Latest tested in Python 3.7
-	
-	git clone https://github.com/azibn/automated_exocomet_hunt
-	conda env create -f environment.yml
-	conda activate auto_exo
 
-Alternatively, you can try this:
+```
+git clone https://github.com/azibn/automated_exocomet_hunt
+conda env create -f environment.yml
+conda activate auto_exo
+./make
+```
 
-	git clone https://github.com/azibn/automated_exocomet_hunt
-	conda create -n <environment name> python jupyter jupyterlab scipy astropy numpy pandas pip cython matplotlib
-	conda activate <environment name>
-	pip install lightkurve kplr eleanor
-	./make
- 
-Different package versions may cause conflicts, so it is recommended to run this code using the virtual environment setup placed above. 
+Alternatively:
 
-### PyMVPA
+```
+git clone https://github.com/azibn/automated_exocomet_hunt
+conda create -n <environment name> python jupyter jupyterlab scipy astropy numpy pandas pip cython matplotlib
+conda activate <environment name>
+pip install lightkurve kplr eleanor
+./make
+```
 
-This code makes the use of [PyMVA](http://www.pymvpa.org/) for the Self-Organising Maps section. Installation instructions are on the webpage.
+Different package versions may cause conflicts, so it is recommended to run this code using the virtual environment setup above.
+
+Tip: [mamba](https://mamba.readthedocs.io/) is a faster drop-in replacement for conda — `mamba env create -f environment.yml` works too.
 
 ## Usage
 
-These scripts currently run on TESS and Kepler lightcurves. Our analysis uses [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves from the SETI collaboration. Pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) pipelines. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves
+### `batch_analyse.py`
 
-Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/). 
+`batch_analyse.py` is the main script of this project, and can run on a single file, a directory of files, or an entire sector. Results are output to a text file with one row per light curve.
 
-TESS SPOC lightcurves can also be obtained from [MAST](https://archive.stsci.edu/missions/tess/tid/).
+Our analysis uses an earlier iteration of the `GSFC-ELEANOR-LITE` lightcurves, a lightweight version of the [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves stored locally (more information [here](https://archive.stsci.edu/hlsp/gsfc-eleanor-lite)). The pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) lightcurves downloaded from MAST, with work progressing on [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves. Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/).
 
-`single_analysis.py` runs on a single file, for example:
- 
- TESS:
+On a `.pkl` lightcurve:
 
-    python single_analysis_xrp.py tesslcs_sector_6_104_2_min_cadence_targets_tesslc_270577175.pkl
- 
- Kepler:
+    python scripts/batch_analyse.py /storage/.../tesslcs_sector_6_104/2_min_cadence_targets/tesslc_270577175.pkl
 
-    wget https://archive.stsci.edu/missions/kepler/lightcurves/0035/003542116/kplr003542116-2012088054726_llc.fits
-    python single_analysis.py kplr003542116-2012088054726_llc.fits
+On a `.fits` lightcurve:
 
+    python scripts/batch_analyse.py hlsp_tess-spoc_tess_phot_0000000270577175-s0006_tess_v1_lc.fits
 
-`batch_analyse.py` runs on directories of files, outputting results to a text file with one row per file. `archive_analyse.sh` is a bash script for processing compressed archives of light curve files, extracting them temporarily to a directory.  Both these scripts have multiple options (number of threads, output file location ...), run with help flag (`-h`) for more details.
+The script has multiple arguments (number of threads, output file location, smoothing method from `wotan`, etc.), some of which are mandatory. Run with `-h` for details.
 
-## Code Style
-### Don't forget about mamba!
+### Injection testing
 
-Mamba is the conda package manager reimplemented in C++ for faster outputs. One can do
+`scripts/injection_testing.py` runs an injection test on a user-specified (default 100000) number of lightcurves between a magnitude range. The depths of the injected comets are random.
 
-```conda install mamba -n base -c conda-forge```
+**Note: This is currently only for the `.pkl` files. It is not yet compatible with other file types.**
 
-to the base environment and then 
+### Integration with `lightkurve`
 
-```mamba env create -f environment.yml```
+The functions work with lightcurves obtained from the `lightkurve` package. However, the main search function, `processing`, requires the data in the format of `time`, `flux`, `quality`, `flux error` in either an `astropy.Table` or `pandas.DataFrame`, so make sure to convert to this format before processing.
 
-`conda` commands will also work with mamba, eg: `conda activate <env>`.
+## Code style
 
-## `batch_analyse.py`
+Code style in `.py` scripts is formatted with the [Black Python Formatter](https://black.readthedocs.io/en/stable/index.html) and must be standardised with Black before pushing to the repository. Black formatting checks run as part of the Git workflow.
 
-These scripts can run on TESS and Kepler lightcurves. Our analysis uses an earlier iteration of the `GSFC-ELEANOR-LITE` lightcurves, a lightweight version of the [Eleanor](https://ui.adsabs.harvard.edu/abs/2019PASP..131i4502F/abstract) lightcurves that has been stored locally. More information on the `GSFC-ELEANOR-LITE` lightcurves can be found [here](https://archive.stsci.edu/hlsp/gsfc-eleanor-lite). The pipeline also works with [SPOC](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..201C/abstract) and [QLP](https://ui.adsabs.harvard.edu/abs/2020RNAAS...4..204H/abstract) lightcurves downloaded from MAST. Work currently progressing on adapting with [TASOC](https://ui.adsabs.harvard.edu/abs/2019AAS...23320207B/abstract) lightcurves.
-
-Kepler lightcurves can be obtained from [MAST](https://archive.stsci.edu/kepler/). 
-
-`batch_analyse` is the main file for this project, and can run on a single file, a directory of files, or the entire sector. Results will be output to a text file with one row per file. For example, with a `.pkl` lightcurve you can run:
-
-    python batch_analyse.py /storage/.../tesslcs_sector_6_104/2_min_cadence_targets/tesslc_270577175.pkl
-
-For `.fits` format lightcurves for example, one can run:
-
-    python batch_analyse.py hlsp_tess-spoc_tess_phot_0000000270577175-s0006_tess_v1_lc.fits
-    
-The script has multiple arguments that you can call (number of threads, output file location, smoothing method from `wotan` etc), where some are mandatory. For more information on these flags, run the script with `-h`. 
-
-## `injection_testing`
-
-This script runs an injection test on a user-specified (default 100000) number of lightcurves between a magnitude range. The depths of the injected comets are random. 
-
-**Note: This is currently only for the `.pkl` files. I have not yet made it compatible with other file types.**
-
-
-## Integration with `lightkurve`
-
-The functions should work with lightcurves obtained from the `lightkurve` package. However, the main function of the search, `processing`, requires the data to be in the format of `time`, `flux`, `quality`, `flux error` in either a `astropy.Table` or `pandas.DataFrame` format right now, so make sure to have this format if you are looking to process the lightcurve.
-
-
-## Code Style
-Code style in `.py` scripts is formatted with [Black Python Formatter](https://black.readthedocs.io/en/stable/index.html) and must be standardised with Black before pushing to the repository. Black formatting checks run as part of the Git workflow. It is responsibility of the user to format their code before pushing to repo.
-
-To format your files, enter shell and run:
-
-`black <name_of_script>.py`
-
-or
-
-`black *`
-
-to format contents of the entire directory.
-
-
-## Docker
-
-This pipeline has been developed with Mac OS mainly, but who knows when you might need to run it on a Windows/who-knows-what OS. Therefore, we make this repository also available with Docker.
-
-If you are not familiar with Docker, [this page](https://www.docker.com/resources/what-container) is a good starting point. But you don't really need to know how it works to use it! This is still in development, as we're still working out the details, so if there are any issues do get in touch. 
-
-### Requirements
-- Docker Desktop 
-- 64-bit CPU
-- 8GB RAM
-
-### Usage
-- `docker build . -t <name you want the container to be>` to build the container.
-- `docker compose run <name of containter> /bin/bash` to run the container into terminal. 
-
-#### Exiting
-To exit the container, simply type `exit` in terminal. 
+    black <name_of_script>.py

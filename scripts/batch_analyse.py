@@ -403,10 +403,10 @@ def run_lc(input_data) -> None:
             print(result_str)
             return
         
-        os.makedirs("outputs_k2", exist_ok=True)
-        
+        os.makedirs(os.path.join("outputs", "k2"), exist_ok=True)
+
         lock.acquire()
-        with open(os.path.join("outputs_k2", args.of), "a") as output_file:
+        with open(os.path.join("outputs", "k2", args.of), "a") as output_file:
             output_file.write(f"{result_str}\n")
         lock.release()
         

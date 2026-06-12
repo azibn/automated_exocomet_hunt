@@ -14,7 +14,7 @@ from tqdm import tqdm
 import numpy as np
 
 
-df = pd.read_csv('candidates/272-candidates.csv')
+df = pd.read_csv('data/272-candidates.csv')
 data = df[df.tags == 'red'].reset_index(drop=True)
 print("read in dataframe.")
 

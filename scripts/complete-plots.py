@@ -66,7 +66,7 @@ def add_gaia_elements(df,tic,sector,fig=None,magnitude_limit=19,ax=None,h=5,w=5)
 
     return fig, ax
 
-df = pd.read_csv('candidates/272-candidates.csv')
+df = pd.read_csv('data/272-candidates.csv')
 data = df[df.tags == 'red'].reset_index(drop=True)
 print("read in dataframe.")
 

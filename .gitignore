@@ -1,8 +1,3 @@
-# IDE and Editor files
-.vscode/
-.idea/
-*.swp
-
 # System files
 .DS_Store
 .nfs*
@@ -17,66 +12,20 @@ __pycache__/
 # Jupyter
 .ipynb_checkpoints/
 
-# Build files
+# Build artifacts
 build/
 bin/micromamba
-
-# Data files and folders
-archive/
-*.csv
-data/
-metadata/
-catalogs/
-mastDownload/
-betapic/
-synthetic_lightcurves/
-kepler/
-notebooks/eda/
-candidates/
-umap_projections/
-injection_recovery_*
-test_lightcurves/
-target_lists/
-tic_project/
-project_targets/
-copy_log/
-xrpdata
-
-# Generated plots and outputs
-plots/
-output*
-*.png
-*.pdf
-som_cutouts*
-som_plots*
-mad-plots*/
-ir_plots*/
-reverse-plots/
-thesis-plots/
-272-candidates*/
-candidates-poster/
-
-# Generated data files
-combined_dataframe*
-eleanor-lite-combined*.txt
-*.parquet
-
-# Compiled extensions
 *.so
+scripts/analysis_tools_cython.c
 
-# Project specific
-poster/
-Untitled.ipynb
-Untitled1.ipynb
-Untitled2.ipynb
-Vis-candidates.ipynb
-candidates.txt
-eleanor-lite_combined_pcaflux.txt
-figs.ipynb
-notebooks/candidates-final.ipynb
-notebooks/thesis_corrections.ipynb
-s1-reversed.txt
-s1-reversedv3.txt
-s7-reversed-spocv2.txt
-scripts/candidatesv2.txt
-eleanor-lite_combined-corrflux.txt
+# Local data, results and figures (not tracked)
+archive/
+data/
+outputs/
+plots/
+archive/
+
+# Exploratory notebooks kept local
+notebooks/
+scripts/som
+scripts/xrpdata
