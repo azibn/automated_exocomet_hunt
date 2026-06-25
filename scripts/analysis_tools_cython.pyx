@@ -42,10 +42,17 @@ import matplotlib.patches as patches
 import matplotlib.gridspec as gs
 from wotan import flatten
 from scipy.stats import skewnorm
+# Optional dependencies for the download helpers (download_lightcurve uses kplr,
+# import_eleanor uses eleanor). Guarded so the module imports without them; the
+# relevant function fails only if actually called without the package installed.
 try:
-    from .som_utils import *
+    import kplr
 except ImportError:
-    from som_utils import *
+    kplr = None
+try:
+    import eleanor
+except ImportError:
+    eleanor = None
 plt.rcParams['agg.path.chunksize'] = 10000
 warnings.filterwarnings("ignore")
 
@@ -378,7 +385,18 @@ def _clean_lightcurve_data(table, drop_bad_points=True, ok_flags=[],
     """
     import math
     import numpy as np
-    
+
+    # Resolve the requested column names against the table case-insensitively,
+    # so callers don't have to match exact casing (e.g. 'quality' vs 'QUALITY').
+    # Without this, quality-flag filtering silently no-ops when the case differs.
+    colname_map = {c.lower(): c for c in table.colnames}
+    if time_col:
+        time_col = colname_map.get(time_col.lower(), time_col)
+    if flux_col:
+        flux_col = colname_map.get(flux_col.lower(), flux_col)
+    if quality_col:
+        quality_col = colname_map.get(quality_col.lower(), quality_col)
+
     # Apply quality flag filtering if requested
     if drop_bad_points and quality_col and quality_col in table.colnames:
         bad_points = []
@@ -777,6 +795,37 @@ def score_fit(y,fit):
     return sum(((y[i]-fit[i])**2 for i in range(len(y))))
 
 
+def chisquare(observed, expected, error):
+    """Chi-square statistic: sum(((observed - expected) / error)**2)."""
+    observed = np.asarray(observed, dtype=float)
+    expected = np.asarray(expected, dtype=float)
+    error = np.asarray(error, dtype=float)
+    return np.nansum(((observed - expected) / error) ** 2)
+
+
+def reduced_chisquare(observed, expected, n_params, error):
+    """Reduced chi-square: chi-square divided by degrees of freedom (N - n_params)."""
+    observed = np.asarray(observed, dtype=float)
+    dof = len(observed) - n_params
+    if dof <= 0:
+        return np.nan
+    return chisquare(observed, expected, error) / dof
+
+
+def rmse(observed, predicted):
+    """Root-mean-square error between observed and predicted."""
+    observed = np.asarray(observed, dtype=float)
+    predicted = np.asarray(predicted, dtype=float)
+    return np.sqrt(np.nanmean((observed - predicted) ** 2))
+
+
+def mae(observed, predicted):
+    """Mean absolute error between observed and predicted."""
+    observed = np.asarray(observed, dtype=float)
+    predicted = np.asarray(predicted, dtype=float)
+    return np.nanmean(np.abs(observed - predicted))
+
+
 def interpret(params):
     """
     Interpret parameters from a double Gaussian fit by extracting peak characteristics.
@@ -853,7 +902,7 @@ def cutout(m,n,table,n_m_bg_start=3,n_m_bg_scale_factor=1):
 
     return table[cutout_before:cutout_after]
 
-def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=3,n_m_bg_scale_factor=1):
+def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=3,n_m_bg_scale_factor=1,comet_model='comet_curve2'):
     """Analyse transit shape by fitting symmetric and asymmetric profiles to determine comet-like characteristics.
     
     This function extracts a lightcurve cutout around a transit event and fits three models:
@@ -989,17 +1038,26 @@ def calc_shape(m,n,time,flux,quality,real,flux_error,width,n_m_bg_start=3,n_m_bg
         fit1 = -gauss(t,*params1)
         fit2 = -comet_curve2(t,*params2)
         fit3 = -skewed_gaussian(t,*params3)
-        depth = fit3.min() # depth of comet (based on minimum point; not entirely accurate, but majority of the time true
+        # Select which model represents the comet for the asymmetry score and
+        # reported shape parameters. Both share parameter positions:
+        # [0]=amplitude, [2]=sigma/width, [3]=asymmetry param (tail for
+        # comet_curve2, skewness/alpha for skewed_gaussian).
+        if comet_model == 'skewed_gaussian':
+            c_params, c_pcov, c_fit = params3, pcov3, fit3
+        else:  # 'comet_curve2' (default)
+            c_params, c_pcov, c_fit = params2, pcov2, fit2
+
+        depth = c_fit.min() # depth of comet (based on minimum point; not entirely accurate, but majority of the time true
         #min_time = t[np.argmin(x)] # time of midtransit/at minimum point
 
-        scores = [score_fit(x,fit) for fit in [fit1,fit2]] # changed for the skewed gaussian fit
+        scores = [score_fit(x,fit) for fit in [fit1,c_fit]] # c_fit = selected comet model (comet_curve2 or skewed_gaussian)
         if scores[1] > 0:
-            skewness_error = np.sqrt(np.diag(pcov3)[3])
-            # params3[0] is the amplitude of the gaussian...
-            # params3[2] is the sigma/width of the gaussian...
-            # params3[3] is the skewness...
+            skewness_error = np.sqrt(np.diag(c_pcov)[3])
+            # c_params[0] is the amplitude...
+            # c_params[2] is the sigma/width...
+            # c_params[3] is the asymmetry parameter (tail or skewness)...
 
-            return scores[0]/scores[1], params3[0], params3[2], params3[3], skewness_error, depth, [t,x,q,fe, background_level], [fit1,fit2,fit3]
+            return scores[0]/scores[1], c_params[0], c_params[2], c_params[3], skewness_error, depth, [t,x,q,fe, background_level], [fit1,fit2,fit3]
         
         else:
 
@@ -1117,7 +1175,7 @@ def smoothing_twostep(t,timestep,real,flux,m,n,power=0.08):
     final_flux *= real
     return final_flux, periodicnoise_ls2, original_masked_flux
 
-def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_cutouts_directory_name='som_cutouts',make_plots=False,twostep=False,plots_dir='plots/',pipeline=None): 
+def processing(table,f_path='.',lc_info=None,method=None,make_plots=False,twostep=False,plots_dir='plots/',pipeline=None,comet_model='comet_curve2'):
     """
     
     Function: The main bulk of the search algorithm.
@@ -1127,9 +1185,7 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
     :f_path: Path to file. Default is '.'
     :lc_info: Metadata about the lightcurve, usually obtained from `import_lightcurve` or `import_XRPlightcurve`. Default is None.
     :method: Choice of smoothing method for lightcurves. Default is None.
-    :som_cutouts: Create SOM (self-organizing map) cutouts of the lightcurve. Default is False.
-    :som_cutouts_directory_name: Name of directory to save cutouts in.
-    :make_plots: Creating plots of lightcurve (pre and post-cleaning), the T-statistic of the lightcurve, its position on the SNR/alpha distribution, 
+    :make_plots: Creating plots of lightcurve (pre and post-cleaning), the T-statistic of the lightcurve, its position on the SNR/alpha distribution,
       and a zoomed-in cut for potential candidates.
     :plots_dir: the directory to save the plots in. Default is 'plots/'.
     :twostep: Perform two-step smoothing (compatible with Fourier/Lomb-Scargle methods only). Default is False.
@@ -1146,7 +1202,6 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
     MIN_DATA_POINTS = 120  # 2.5 days of data
     DEFAULT_LOMBSCARGLE_POWER = 0.08
     T_STATISTIC_WINDOW_FACTOR = 60
-    SOM_CUTOUT_HALF_LENGTH = 60  # 2 day window either side
     WOTAN_METHODS = ['biweight', 'lowess', 'median', 'mean', 'rspline', 'hspline', 'trim_mean', 'medfilt']
     LOMBSCARGLE_METHODS = ['lomb-scargle', 'fourier']
 
@@ -1212,12 +1267,14 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
             m,n,T2,minT,minT_time,minT_duration,Tm_start,Tm_end,Tm_depth,Ts = run_test_statistic(final_flux2, factor, timestep, t, T_STATISTIC_WINDOW_FACTOR)
 
 
-        asym, amplitude, width, skewness, skewness_error, depth, info, fits = calc_shape(m,n,t,flux_calc_shape,quality,real,flux_error,width=minT_duration)
+        asym, amplitude, width, skewness, skewness_error, depth, info, fits = calc_shape(m,n,t,flux_calc_shape,quality,real,flux_error,width=minT_duration,comet_model=comet_model)
 
         ### preparing some variables for statistics ###
         try:
             gauss_fit = fits[0]
-            skewed_fit = fits[2]
+            # Goodness-of-fit stats follow the selected comet model for
+            # consistency with the asymmetry score and reported parameters.
+            skewed_fit = fits[2] if comet_model == 'skewed_gaussian' else fits[1]
 
 
             cutout_flux = info[1] # check why this raises errors sometimes
@@ -1247,27 +1304,23 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
         ### sorting out the lightcurves into the initial groups ### 
         classification = classify(m,n,real,asym)
 
+        # Comma-delimited so fields with spaces (e.g. obj_id 'EPIC 206083510')
+        # stay a single column and the output reads cleanly with pd.read_csv.
         search =\
-            f_path+' '+str(obj_id) + ' '+\
-            ' '.join([str(round(a,5)) for a in
+            f_path+','+str(obj_id) + ','+\
+            ','.join([str(round(a,5)) for a in
                 [minT, minT/Ts, minT_time,
                 asym,amplitude,width, skewness, skewness_error,
                 minT_duration,depth, peak_power, M_stat, m,n, chisq_fit1, chisq_fit3,
                 reduced_chisq_fit1, reduced_chisq_fit3, rmse_fit1, rmse_fit3, mae_fit1, mae_fit3]])+\
-            ' '+classification
-        
+            ','+classification
+
         # original_median_flux
 
-
-        ## little fix for string splitting between SPOC lightcurves and XRP ones
-        result = search.split()
+        result = search.split(",")
         midtransit_time = float(result[4])
 
-        if 'TIC' in search:
-            final_result = [result[i] + ' ' + result[i+1] if result[i] == 'TIC' else result[i] for i in range(len(result)) if i+1 < len(result)]
-        else:
-            final_result = [val for val in search.split() if val != 'TIC']
-
+        final_result = list(result)
         final_result.append(lc_info[2])
         print(final_result)
         if make_plots:
@@ -1277,37 +1330,10 @@ def processing(table,f_path='.',lc_info=None,method=None,som_cutouts=False,som_c
                 plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, final_result, lc_info, pipeline=pipeline)
 
     else:
-        search = file_basename+' 0 0 0 0 0 0 0 0 notEnoughData'
+        # 25 comma-delimited fields (path, obj_id, 22 zeros, classification) to
+        # keep a consistent column count with the main branch / header.
+        search = ",".join([f_path, str(obj_id)] + ["0"]*22 + ["notEnoughData"])
 
-    if som_cutouts:
-        try:
-            os.makedirs(f'{som_cutouts_directory_name}')
-        except FileExistsError:
-            pass
-        #data_to_cut = pd.DataFrame(data=[original_table[original_table.colnames[0]],original_table[original_table.colnames[1]],original_table[original_table.colnames[2]],original_table[original_table.colnames[3]]]).T # this is normalised, need the original flux
-        data_to_cut = pd.DataFrame(data=[t, nonnormalised_flux, quality, flux_error]).T 
-
-        data_to_cut.columns = ['time','flux','quality','flux_err']
-        som_lightcurve = create_som_cutout_test(data_to_cut,min_T=midtransit_time,half_cutout_length=SOM_CUTOUT_HALF_LENGTH) # 2 day window either side 
-        #x1 = np.mean(som_lightcurve.flux[0:12])
-        #x2 = np.mean(som_lightcurve.flux[-13:-1]) # the last 12 points
-
-        #y1 = np.mean(som_lightcurve.time[0:24])
-        #y2 = np.mean(som_lightcurve.time[-25:-1])
-        #grad = (x2-x1)/(y2-y1)
-        #background_level = x1 + grad * (som_lightcurve.time - y1)
-        #som_lightcurve.flux = som_lightcurve.flux - background_level
-
-
-
-        try:
-            save_unique_file(lc_info, som_lightcurve,som_cutouts_directory_name)
-        except TypeError:
-            obj_id = input("object id: ")
-            save_unique_file(lc_info, som_lightcurve,som_cutouts_directory_name)
-
-            
-        del original_table
     if method == None:
         return search, [t, flux, quality]
     else:
@@ -1633,34 +1659,3 @@ def plot_lightcurve(original_table, t, flux, real, flux_error, T1, info, fits, f
             suffix += 1
 
     plt.show()
-
-
-def save_unique_file(lc_info, som_lightcurve,som_cutouts_directory_name='som_cutouts'):
-    """
-    Save SOM lightcurve cutout to a unique filename, avoiding overwrites.
-    
-    Parameters:
-    :lc_info (list): Lightcurve metadata containing object ID and sector
-    :som_lightcurve: SOM lightcurve data object with time, flux, and flux_err attributes
-    :som_cutouts_directory_name (str): Directory name to save cutouts. Default is 'som_cutouts'.
-    
-    Returns:
-    None (saves .npz file to disk)
-    """
-    obj_id = lc_info[0]
-    sector = lc_info[2]
-    base_filename = f'{som_cutouts_directory_name}/{obj_id}.npz'
-    
-    # Check if the base filename exists
-    if not os.path.exists(base_filename):
-        np.savez(base_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, flux_err=som_lightcurve.flux_err, id=obj_id, sector=sector)
-    else:
-        # If the base filename exists, find a unique filename
-        suffix = 1
-        while True:
-            unique_filename = f'{som_cutouts_directory_name}/{obj_id}_{suffix}.npz'
-            if not os.path.exists(unique_filename):
-                np.savez(unique_filename, time=som_lightcurve.time, flux=som_lightcurve.flux, flux_err=som_lightcurve.flux_err, id=obj_id, sector=sector)
-                break
-            suffix += 1
-

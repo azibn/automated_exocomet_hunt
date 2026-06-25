@@ -22,11 +22,34 @@ from analysis_tools_cython import (
     import_lightcurve,
     processing,
     _folders_in,
-    _clean_lightcurve_data
+    _clean_lightcurve_data,
+    PIPELINE_DICT,
 )
 
 os.environ["OMP_NUM_THREADS"] = "1"
 warnings.filterwarnings("ignore")
+
+def output_columns(comet_model="comet_curve2"):
+    """Column names for the output file, written as a header so the result can
+    be loaded directly with pd.read_csv(...) (no separate colnames.json needed).
+
+    Order must match the comma-delimited row built in processing() (.pyx). The
+    asymmetry parameter at position [3] and the comet-model goodness-of-fit
+    columns are named after the selected model: 'skewness'/'_skew' for the
+    skewed Gaussian (where [3] really is the skewness/alpha), or 'tail'/'_comet'
+    for comet_curve2 (where [3] is the exponential tail decay parameter).
+    """
+    if comet_model == "skewed_gaussian":
+        asym_param, asym_param_err, comet_tag = "skewness", "skewness_err", "skew"
+    else:  # 'comet_curve2'
+        asym_param, asym_param_err, comet_tag = "tail", "tail_err", "comet"
+    return [
+        "path", "TIC_ID", "signal", "snr", "time", "asym_score", "amplitude",
+        "width", asym_param, asym_param_err, "duration", "depth", "peak_lspower",
+        "mstat", "m", "n", "chisq_gauss", f"chisq_{comet_tag}", "rchisq_gauss",
+        f"rchisq_{comet_tag}", "rmse_gauss", f"rmse_{comet_tag}", "mae_gauss",
+        f"mae_{comet_tag}", "transit_prob",
+    ]
 
 # Define base pipeline configurations
 # 
@@ -86,6 +109,82 @@ pipeline_dict = {
     # Legacy (commented out, not in use)
     # 'eleanor-xrp': _eleanor_xrp_config,
 }
+
+# Mission can always be derived from the pipeline, so --mission never needs
+# to be passed explicitly for file-based runs.
+_PIPELINE_TO_MISSION = {
+    'eleanor-lite': 'TESS',
+    'TESS-SPOC': 'TESS',
+    'eleanor-xrp': 'TESS',
+    'Kepler': 'Kepler',
+    'K2': 'K2',
+    'everest': 'K2',
+}
+
+# Detected pipeline names that don't have their own key in the Cython
+# PIPELINE_DICT and need to be resolved to an existing config for column
+# extraction. EVEREST K2 lightcurves use the same FCOR/FRAW_ERR layout as the
+# existing 'K2' config, so they share it.
+_PIPELINE_DICT_ALIAS = {
+    'everest': 'K2',
+}
+
+
+def detect_pipeline_from_path(file_path: str) -> str:
+    """
+    Infer the pipeline (and implicitly the mission) from a lightcurve filename.
+
+    Relies on the standard MAST/HLSP naming conventions, e.g.:
+        hlsp_gsfc-eleanor-lite_tess_ffi_s0012-..._lc.fits    -> eleanor-lite
+        hlsp_tess-spoc_tess_phot_..._lc.fits                 -> TESS-SPOC
+        hlsp_everest_k2_llc_202139994-c00_kepler_..._lc.fits -> everest
+        kplr<id>-..._llc.fits                                -> Kepler
+        ktwo<id>-c<campaign>_..._llc.fits                    -> K2
+        tess<date>-s00XX-..._lc.fits                         -> TESS-SPOC
+        *.pkl (XRP eleanor pickles)                          -> eleanor-xrp
+
+    Returns a pipeline name; 'everest' shares the 'K2' column config via
+    _PIPELINE_DICT_ALIAS. Raises ValueError if the filename doesn't match a
+    known convention (pass -pipeline explicitly in that case).
+    """
+    name = os.path.basename(file_path).lower()
+
+    # XRP eleanor pickles
+    if name.endswith(".pkl"):
+        return 'eleanor-xrp'
+
+    # HLSP convention: hlsp_<producer>_<mission>_...
+    if name.startswith("hlsp_"):
+        parts = name.split("_")
+        producer = parts[1] if len(parts) > 1 else ""
+        mission = parts[2] if len(parts) > 2 else ""
+        if "eleanor" in producer:
+            return 'eleanor-lite'
+        if "spoc" in producer:
+            return 'TESS-SPOC'
+        if "everest" in producer:
+            return 'everest'
+        # Unknown producer: fall back to the mission token
+        if mission == "k2":
+            return 'K2'
+        if mission == "kepler":
+            return 'Kepler'
+        if mission == "tess":
+            return 'TESS-SPOC'
+
+    # Raw MAST archive names
+    if name.startswith("kplr"):
+        return 'Kepler'
+    if name.startswith("ktwo"):
+        return 'K2'
+    if name.startswith("tess"):
+        return 'TESS-SPOC'
+
+    raise ValueError(
+        f"Could not auto-detect pipeline from filename: {os.path.basename(file_path)}. "
+        f"Pass -pipeline explicitly."
+    )
+
 
 def setup_argument_parser() -> argparse.ArgumentParser:
     """
@@ -148,14 +247,16 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("-n", help="does not save output file", action="store_true")
     parser.add_argument(
         "--mission",
-        help="NASA mission. Options are 'Kepler', 'K2','TESS'.",
-        default="TESS",
+        help="NASA mission ('Kepler', 'K2', 'TESS'). Optional: auto-derived from the "
+             "detected/selected pipeline when omitted.",
+        default=None,
         type=str
     )
     parser.add_argument(
         "-pipeline",
-        help="pipeline choice. Default is `eleanor-lite`. Other options are `spoc` and `xrp`",
-        default="eleanor-lite",
+        help="Optional pipeline override. When omitted, the pipeline is auto-detected "
+             "from each file's name (eleanor-lite, TESS-SPOC, Kepler, K2, eleanor-xrp).",
+        default=None,
         type=str
     )
     parser.add_argument(
@@ -164,10 +265,12 @@ def setup_argument_parser() -> argparse.ArgumentParser:
         action="store_false",
     )
     parser.add_argument(
-        "-som_cutouts",
-        help="extract lightcurves cutouts for SOM clustering. Default is False.",
-        action="store_true",
-        dest="som",
+        "-comet_model",
+        help="model used for comet fitting/asymmetry score. Options: 'comet_curve2' "
+             "(default) or 'skewed_gaussian'.",
+        default="comet_curve2",
+        choices=["comet_curve2", "skewed_gaussian"],
+        dest="comet_model",
     )
     parser.add_argument(
         "-plots_dir",
@@ -306,18 +409,29 @@ def run_lc(input_data) -> None:
             file_path = input_data
             filename = os.path.basename(file_path)
             print(file_path)
-            
+
+            # Pipeline is auto-detected from the filename unless overridden via
+            # -pipeline; mission is then derived from the pipeline.
+            pipeline = args.pipeline or detect_pipeline_from_path(file_path)
+            mission = args.mission or _PIPELINE_TO_MISSION.get(pipeline, 'unknown')
+            config_key = _PIPELINE_DICT_ALIAS.get(pipeline, pipeline)
+            extracted_cols = PIPELINE_DICT.get(config_key, {}).get('columns', [])
+            print(
+                f"  -> mission={mission} | pipeline={pipeline} | "
+                f"extracting columns: {extracted_cols}"
+            )
+
             if file_path.endswith(".pkl"):
                 table, lc_info = import_XRPlightcurve(
                     file_path, sector=sector, clip=args.c, drop_bad_points=args.q
                 )
                 table = table[table.colnames[:5]]
             else:
-                table, lc_info = import_lightcurve(file_path, flux=args.f, pipeline=args.pipeline)
-                if (args.pipeline == 'eleanor-lite') and ('pca' in args.f.lower()):
+                table, lc_info = import_lightcurve(file_path, flux=args.f, pipeline=config_key)
+                if (pipeline == 'eleanor-lite') and ('pca' in args.f.lower()):
                     table = table['TIME','PCA_FLUX','QUALITY','FLUX_ERR','FLUX_BKG','X_CENTROID','Y_CENTROID','CORR_FLUX']
                     table = table[table.colnames[:5]]
-            
+
             process_name = file_path
             metadata_filename = filename
             
@@ -337,7 +451,11 @@ def run_lc(input_data) -> None:
             process_name = f"downloaded_{target_id}"
             metadata_filename = target_id
 
-            pipeline = args.pipeline  # or 'eleanor-lite', etc.
+            # Download mode has no filename to sniff; fall back to -pipeline or
+            # the eleanor-lite default.
+            pipeline = args.pipeline or 'eleanor-lite'
+            mission = args.mission or _PIPELINE_TO_MISSION.get(pipeline, 'unknown')
+            config_key = _PIPELINE_DICT_ALIAS.get(pipeline, pipeline)
             table_cols_lower_map = {col.lower(): col for col in table.colnames}
 
             expected_cols = pipeline_dict[pipeline]['columns']
@@ -345,8 +463,12 @@ def run_lc(input_data) -> None:
 
             available_cols = [table_cols_lower_map[col] for col in expected_cols_lower if col in table_cols_lower_map]
 
-        
-            expected_cols = pipeline_dict[args.pipeline]['columns']
+            print(
+                f"  -> mission={mission} | pipeline={pipeline} | "
+                f"extracting columns: {expected_cols}"
+            )
+
+            expected_cols = pipeline_dict[pipeline]['columns']
             
             # Map expected columns to actual columns in the table
             time_col = expected_cols[0].lower() if len(expected_cols) > 0 and expected_cols[0].lower() in table_cols_lower_map else None
@@ -382,9 +504,9 @@ def run_lc(input_data) -> None:
             method=args.m,
             make_plots=args.p,
             twostep=args.step,
-            som_cutouts=args.som,
             plots_dir=args.plots_dir,
-            pipeline=args.pipeline,
+            pipeline=config_key,
+            comet_model=args.comet_model,
         )
 
         if args.metadata:
@@ -435,21 +557,29 @@ if __name__ == "__main__":
 
     # Handle single target download mode
     if args.target_id:
-        print(f"Downloading lightcurve for target ID: {args.target_id}")
-        
+        # No filename to sniff in download mode: use -pipeline or default.
+        dl_pipeline = args.pipeline or 'eleanor-lite'
+        dl_mission = args.mission or _PIPELINE_TO_MISSION.get(dl_pipeline, 'TESS')
+        print(
+            f"Downloading lightcurve for target ID: {args.target_id} "
+            f"(mission={dl_mission}, pipeline={dl_pipeline})"
+        )
+
         try:
-            lightcurve = download_lightcurve(args.target_id, mission=args.mission, author=args.pipeline, sector=args.sector)
+            lightcurve = download_lightcurve(args.target_id, mission=dl_mission, author=dl_pipeline, sector=args.sector)
             run_lc((lightcurve, args.target_id))
         except Exception as e:
             print(f"Error downloading/processing target {args.target_id}: {e}", file=sys.stderr)
             sys.exit(1)
-            
+
         sys.exit(0)
 
-    if (args.pipeline == 'eleanor-lite') and ('pca' in args.f.lower()):
-        print(f"using PCA FLUX from {args.pipeline}")
+    if args.pipeline is None:
+        print(f"using {args.f} (pipeline/mission auto-detected per file)")
+    elif (args.pipeline == 'eleanor-lite') and ('pca' in args.f.lower()):
+        print(f"using PCA FLUX from {args.pipeline} (override)")
     else:
-        print(f"using {args.f} from {args.pipeline}")
+        print(f"using {args.f} from {args.pipeline} (override)")
 
     # Collect all files to process
     all_files = []
@@ -466,6 +596,15 @@ if __name__ == "__main__":
         else:
             print("globbing subdirectories")
     
+    # Write the CSV header once, before the workers append rows. Only when the
+    # output file is new/empty so re-runs that append don't duplicate it.
+    if not args.n:
+        out_path = os.path.join("outputs", "k2", args.of)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        if (not os.path.exists(out_path)) or (os.path.getsize(out_path) == 0):
+            with open(out_path, "w") as f:
+                f.write(",".join(output_columns(args.comet_model)) + "\n")
+
     # Process all files
     pool = multiprocessing.Pool(processes=args.threads)
     pool.map(run_lc, all_files)
